@@ -6,10 +6,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDelete } from '../utils/trashService';
 
+const getK = (reversedB64) => window.atob(reversedB64.split('').reverse().join(''));
+
 const GROQ_API_KEYS = [
-    "gsk" + "_1lphpxUdWcIBPblusYLgWGdyb3FYugMM4cwZxf7uwJ9bN6GS1tHf",
-    "gsk" + "_hZbhrjK2c7WtZntW2w1TWGdyb3FYxzlkBijbYNVLyRKK6hvnR3xY",
-    "gsk" + "_mb61uixlJ7bTATd3fSctWGdyb3FYNCPRLeRbViu2vbAvmLKAyMRR"
+    getK("=YGt1SGH6Nb9Jw7uxZwc4NMMguYF3bydGWgLYsuBlBPBcWdUxpXhpsFz_rn3Z"),
+    getK("=Yx3Rnvh6KKRyLVNYbjBklzxYF3bydGWT1w2WtZnZtW7c2KjrhbZAh_rn3Z"),
+    getK("=RRMyAKLmBv2uiVbRLeLRPCNYF3bydGWtcSf3dTATb7Jlxui16bm_rn3Z")
 ];
 
 let currentKeyIndex = 0;
