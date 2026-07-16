@@ -26,14 +26,17 @@ jobs:
       - name: Build Web Assets (Vite)
         run: npm run build
 
-      - name: Sync Capacitor
-        run: npx cap sync android
-
       - name: Setup Java (for Android SDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x ./android/gradlew
 
       - name: Build APK (Debug)
         working-directory: ./android
