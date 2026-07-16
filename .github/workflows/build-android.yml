@@ -10,7 +10,7 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,12 +35,54 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./android/gradlew
 
+      - name: Install Android SDK and platform tools
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+
+          ANDROID_SDK_ROOT="$HOME/Android/Sdk"
+          mkdir -p "$ANDROID_SDK_ROOT"
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd "$HOME"
+
+          # Download command-line tools (update URL if Google changes it)
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d cmdline-tools-tmp
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          mv cmdline-tools-tmp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
+
+          # Persist env for following steps
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+          # Accept licenses and install required packages (adjust api/build-tools to your project)
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+      - name: Sync Capacitor (Android)
+        run: npx cap sync android --verbose
 
       - name: Build APK (Debug)
         working-directory: ./android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --info --stacktrace
+
+      - name: Dump Android problems report (if any)
+        if: failure()
+        run: |
+          if [ -f android/build/reports/problems/problems-report.html ]; then
+            echo "==== Android problems report (first 400 lines) ===="
+            sed -n '1,400p' android/build/reports/problems/problems-report.html || true
+            echo "==== end of report ===="
+          else
+            echo "No problems-report.html found. Listing android/build/reports:"
+            ls -la android/build/reports || true
+          fi
 
       - name: Upload APK Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: evorise-app-debug.apk
