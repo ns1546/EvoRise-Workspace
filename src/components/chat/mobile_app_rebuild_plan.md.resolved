@@ -1,0 +1,535 @@
+# Evorise Mobile App — Full Native Rebuild Plan
+
+> **Goal**: User should not be able to tell if it's a web app or a native app. Every page, every interaction, every component must look and feel like a premium native iOS/Android app.
+
+---
+
+## The Problem With Current Mobile UI
+
+| Issue | Current State | Target State |
+|---|---|---|
+| **Layout** | Scaled-down desktop with padding changes | True mobile-first: cards, lists, bottom sheets |
+| **Navigation** | Bottom tab bar exists but pages still look "web" | Every page has native-app page structure |
+| **Header** | Generic title bar | iOS-style large title + sticky section headers |
+| **Tables** | CSS-transformed table rows | Replaced with native list cells (like Contacts app) |
+| **Forms** | Desktop modal overlays | Bottom sheet forms with grouped iOS inputs |
+| **Data density** | Cramped desktop data forced into small screen | Context-appropriate mobile information hierarchy |
+| **Touch targets** | Mix of small and large tap areas | All tap targets ≥ 44px, proper spacing |
+| **Animations** | None / web-style | Spring animations, slide-in sheets, haptic-like feedback |
+| **Empty states** | Generic text | Illustrated, friendly empty states |
+| **FAB** | Only on some pages | Every page that needs creation has proper FAB |
+
+---
+
+## Architecture Decisions
+
+### Strategy: `isMobile` branch — separate JSX trees
+Every component already has `if (isMobile) { return <MobileUI />; }` pattern.
+**We keep this and rebuild the `<MobileUI />` tree for every single component from scratch.**
+
+### Design System: "Evorise App" — iOS-inspired but branded
+- Background: `#F2F2F7` (iOS system grouped background)
+- Cards: `#FFFFFF` with `border-radius: 12px`
+- Primary Blue: `#0066CC` (Evorise brand ocean blue)
+- Accent Orange: `#FF6820` (Evorise deep orange)
+- iOS system colors for status: `#34C759` green, `#FF3B30` red, `#FF9500` amber
+- Typography: `-apple-system` font stack, 34px large title, 17px body, 13px caption
+- Dividers: `0.5px solid #C6C6C8` (native thin separator)
+
+### New CSS Classes in `mobile-app.css`
+All new native patterns live in dedicated CSS classes, NOT inline styles.
+
+---
+
+## Page-by-Page Rebuild Plan
+
+### PHASE 1 — Foundation & Core App Shell (App.jsx + CSS)
+
+**App.jsx Mobile Shell:**
+- [x] Existing: bottom nav bar, app bar, more sheet *(functional but needs polish)*
+- [ ] **Fix**: App bar needs dynamic "large title" mode that collapses on scroll (like iOS)
+- [ ] **Fix**: Bottom nav needs haptic-style active state (scale + color fill)
+- [ ] **Fix**: "More" sheet needs grid layout (3-column icon grid) instead of list items
+- [ ] **New**: Page transition animations (slide-in from right for sub-pages)
+- [ ] **New**: Pull-to-refresh visual indicator
+
+**CSS Layer — New Native Classes:**
+- `.mob-large-title` — 34px bold, collapses on scroll
+- `.mob-section-header` — iOS section header (gray cap, 13px uppercase)
+- `.mob-inset-group` — white card container with 12px radius
+- `.mob-cell` — individual list row (64px min, with separator)
+- `.mob-cell-icon` — 40px rounded icon leading
+- `.mob-cell-trailing` — chevron / badge / switch trailing
+- `.mob-page` — full height page container
+- `.mob-segment` — iOS-style segmented control
+- `.mob-search-bar` — native rounded search input
+- `.mob-empty-state` — centered icon + message
+- `.mob-action-btn` — full-width primary action button
+- `.mob-sheet` — already exists, needs spring animation
+- `.mob-badge-dot` — notification dot on icons
+
+---
+
+### PHASE 2 — Dashboard (Dashboard.jsx)
+
+**Current**: Grid stat cards, quick action buttons, recent task list
+**Target**: True iOS Home Screen / Dashboard App feel
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Good morning, Rahim     🔔  │  ← Large title header
+│ Tuesday, July 15            │
+├─────────────────────────────┤
+│ [Pending] [Done] [Team] [Cli]│  ← Horizontal scroll stat pills
+├─────────────────────────────┤
+│ ⚡ QUICK ACTIONS             │  ← Section header
+│ [My Day] [Tasks] [Chat] [+] │  ← 4-column app icon grid
+├─────────────────────────────┤
+│ 📋 RECENT TASKS             │  ← Section header
+│ ○ Task Name          High → │  ← Native list cells
+│ ✓ Completed Task     Done   │
+│ ○ Another Task       Med  → │
+├─────────────────────────────┤
+│ 👥 TEAM OVERVIEW            │  ← Admin only section
+│ [Avatar] Name  8 tasks →    │
+└─────────────────────────────┘
+```
+
+**Key changes:**
+- Stats become a horizontal scroll strip of colored pill cards (like Apple Watch stats)
+- Quick actions become proper app icon grid (icon + label under it)
+- Task list uses `.mob-inset-group` with `.mob-cell` rows
+- Section headers use `.mob-section-header` pattern
+
+---
+
+### PHASE 3 — My Day (MyDay.jsx)
+
+**Current**: Progress card + flat scrollable list + bottom sheet detail
+**Target**: Focus Mode — like Apple Reminders
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ My Day                [Hist]│  ← Nav bar
+│ 7 Tasks · 43% Done          │  ← Subtitle in nav
+├─────────────────────────────┤
+│ ████████████░░░░░░░░░  43%  │  ← Thin progress bar (under nav)
+├─────────────────────────────┤
+│ 🔍 Search tasks...          │  ← Rounded search bar
+├─────────────────────────────┤
+│ 🔴 HIGH PRIORITY            │  ← Section header
+│ ○ Task Alpha         High → │
+│ ○ Task Beta          High → │
+├─────────────────────────────┤
+│ 🟡 MEDIUM PRIORITY          │
+│ ○ Task Gamma         Med  → │
+├─────────────────────────────┤
+│ ✅ COMPLETED TODAY          │
+│ ✓ Done Task          Done   │
+└─────────────────────────────┘
+```
+
+**Task Detail Sheet:**
+- Full 95vh bottom sheet
+- Native "Cancel" / "Mark Done" in sheet header
+- Large title task name
+- Instructions in grouped inset card
+- Response textarea in separate inset group
+- Green "Mark as Done" full-width action button at bottom (above safe area)
+
+---
+
+### PHASE 4 — Instant Work (InstantWork.jsx)
+
+**Current**: List of countdown tasks
+**Target**: Live countdown ticker cards — like a delivery tracking app
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Instant Work           [New]│  ← Nav bar
+├─────────────────────────────┤
+│ [My Tasks] [Team] [History] │  ← Segmented control
+├─────────────────────────────┤
+│ ┌─────────────────────────┐ │
+│ │ 🔴 Task Title           │ │  ← Active countdown card
+│ │ Assigned to: Karim      │ │
+│ │     ⏱ 00:23:45          │ │  ← BIG live timer
+│ │ [✓ Done] [✗ Failed]     │ │  ← Action buttons in card
+│ └─────────────────────────┘ │
+│ ┌─────────────────────────┐ │
+│ │ 🟡 Another Task         │ │
+│ │ Assigned to: Anika      │ │
+│ │     ⏱ 01:15:22          │ │
+│ └─────────────────────────┘ │
+└─────────────────────────────┘
+```
+
+**Key changes:**
+- Each active task is a full card (not a list row) with a LIVE countdown timer prominently displayed
+- Color codes: red (overdue), orange (<10min), green (plenty of time)
+- Card pulsates when overdue
+- "New Task" admin FAB (orange gradient circle) fixed above bottom nav
+
+---
+
+### PHASE 5 — WhatsApp Chat (WhatsApp.jsx)
+
+**Current**: Desktop-adapted chat with hidden sidebar
+**Target**: Exact native messaging app layout
+
+**Layout (Thread List View):**
+```
+┌─────────────────────────────┐
+│ Chats                  [✏️] │  ← Large title + compose
+│ 🔍 Search...               │  ← Search bar
+├─────────────────────────────┤
+│ [Avatar] Group Name    ···  │  ← Thread row with time
+│          Last message  3m   │    
+│─────────────────────────────│
+│ [Avatar] Another Chat       │
+│          Hey, done?    1h   │
+└─────────────────────────────┘
+```
+
+**Layout (Chat View):**
+```
+┌─────────────────────────────┐
+│ ← [Avatar] Group Name  [📹]│  ← Nav bar with back
+├─────────────────────────────┤
+│                             │
+│         [Date pill]         │
+│                             │
+│    ┌─────────────────────┐  │
+│    │ Incoming message    │  │  ← Left bubbles
+│    └─────────────────────┘  │
+│ ┌─────────────────────────┐ │
+│ │ My message is here      │ │  ← Right bubbles (blue)
+│ └─────────────────────────┘ │
+├─────────────────────────────┤
+│ [📎] [   Type message  ] [▶]│  ← Message input toolbar
+└─────────────────────────────┘
+```
+
+**Key changes:**
+- Thread list view is the entry — shows all conversations
+- Tap a thread → slides in (or fades) to chat view
+- Chat view has proper bubble styling, timestamps, read receipts
+- Input bar is pinned to bottom (above keyboard and safe area)
+- Back button in chat nav bar returns to thread list
+
+---
+
+### PHASE 6 — EvoBoard (EvoBoard.jsx)
+
+**Current**: Kanban board adapted for mobile (broken)
+**Target**: Native project management app (like Linear/Jira mobile)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ EvoBoard               [+]  │  ← Nav bar + FAB
+│ [All] [To Do] [Doing] [Done]│  ← Horizontal filter chips
+├─────────────────────────────┤
+│ [Project Filter ▾]          │  ← Dropdown filter
+├─────────────────────────────┤
+│ TO DO (3)                   │  ← Section header
+│ ┌─────────────────────────┐ │
+│ │ 🔴 Task Title      High │ │  ← Task card
+│ │ Client: ABC Ltd         │ │
+│ │ [Karim] Due: Jul 20     │ │
+│ └─────────────────────────┘ │
+│ ┌─────────────────────────┐ │
+│ │ 🟡 Another Task    Med  │ │
+│ └─────────────────────────┘ │
+│ IN PROGRESS (2)             │
+│ ...                         │
+└─────────────────────────────┘
+```
+
+**Task Detail Sheet (on tap):**
+- Full-page slide-in (like opening a detail page)
+- All task details in native grouped list format
+- Edit mode via native form bottom sheet
+- Status change via action sheet (not modal)
+
+---
+
+### PHASE 7 — Team Directory (TeamDirectory.jsx)
+
+**Current**: Table view of team members
+**Target**: Contacts app style
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Team              [+ Invite]│  ← Nav bar (Admin only: + button)
+│ 🔍 Search team...           │  ← Search bar
+├─────────────────────────────┤
+│ A                           │  ← Alphabetical section header
+│ [🟢][Avatar] Anika Islam →  │  ← Cell with status dot + chevron
+│ [🔴][Avatar] Ahmed Khan  →  │
+├─────────────────────────────┤
+│ K                           │
+│ [🟢][Avatar] Karim Hossain →│
+└─────────────────────────────┘
+```
+
+**Team Member Detail (slide-in page):**
+- Large avatar header (blurred background)
+- Contact-style info rows: Role, Email, Phone, Status
+- Action buttons: 📞 Call, 💬 Message, 📧 Mail
+- Task stats in grouped section
+
+---
+
+### PHASE 8 — Client Management (ClientManagement.jsx)
+
+**Current**: Table/form hybrid
+**Target**: CRM app style
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Clients               [+]   │
+│ 🔍 Search clients...        │
+├─────────────────────────────┤
+│ [All] [Active] [Idle]       │  ← Filter pills
+├─────────────────────────────┤
+│ ┌─────────────────────────┐ │
+│ │ 🟡 ABC Corporation      │ │  ← Client card
+│ │ 12 tasks · 3 pending    │ │
+│ │ ☎ 01711-000000         →│ │
+│ └─────────────────────────┘ │
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 9 — Notifications (NotificationCenter.jsx)
+
+**Current**: Table list
+**Target**: iOS Notification Center style
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Notifications  [Mark All ✓] │
+├─────────────────────────────┤
+│ TODAY                       │
+│ ┌─────────────────────────┐ │
+│ │ 🔔 Title           12m  │ │
+│ │    Notification body... │ │
+│ └─────────────────────────┘ │
+│ YESTERDAY                   │
+│ ┌─────────────────────────┐ │
+│ │ ✅ Task completed  1d   │ │
+│ └─────────────────────────┘ │
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 10 — Notice Board (NoticeBoard.jsx)
+
+**Current**: Card list
+**Target**: App-style announcement board (like Slack announcements)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Notice Board           [+]  │
+├─────────────────────────────┤
+│ PINNED                      │
+│ ┌─────────────────────────┐ │
+│ │ 📌 Important Notice     │ │
+│ │ by Admin · 2 days ago   │ │
+│ │ Tap to read full notice │ │
+│ └─────────────────────────┘ │
+│ ALL NOTICES                 │
+│ ...                         │
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 11 — Evo Notes (EvoNotes.jsx)
+
+**Current**: Notes editor
+**Target**: Apple Notes-like app
+
+**Layout (Notes List):**
+```
+┌─────────────────────────────┐
+│ Evo Notes              [+]  │  ← Large title
+│ 🔍 Search notes...          │
+├─────────────────────────────┤
+│ PINNED                      │
+│ Note Title          Today > │
+│ Preview of content...       │
+│─────────────────────────────│
+│ ALL NOTES                   │
+│ Another Note       Jul 14 > │
+│ Short preview text...       │
+└─────────────────────────────┘
+```
+
+**Note Detail (slide-in or full sheet):**
+- Full page editor
+- Bold title at top
+- Body text area fills rest of page
+- Keyboard auto-avoids
+
+---
+
+### PHASE 12 — Calendar (CalendarView.jsx)
+
+**Current**: Full calendar component (may not render well)
+**Target**: iOS Calendar app style
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ July 2026              [+]  │  ← Month title
+│ S  M  T  W  T  F  S        │  ← 7-column compact grid
+│ ...compact month view...    │
+├─────────────────────────────┤
+│ TUESDAY, JULY 15            │  ← Selected day header
+│ ○ 9:00 AM  Meeting          │  ← Event list
+│ ○ 2:00 PM  Task Review      │
+│ ○ 4:30 PM  Client Call      │
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 13 — Meetings (Meetings.jsx)
+
+**Target**: Meetings app (like Zoom/Teams mobile)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Meetings               [+]  │
+│ [Upcoming] [Past]           │
+├─────────────────────────────┤
+│ TODAY                       │
+│ ┌─────────────────────────┐ │
+│ │ 📹 Team Standup    3:00 │ │
+│ │ Video · 30 min · 4 peep │ │
+│ │ [Join Now]              │ │
+│ └─────────────────────────┘ │
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 14 — Mailbox (Mailbox.jsx)
+
+**Target**: Native Mail app
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Inbox               [Compose]│
+│ 🔍 Search mail...           │
+├─────────────────────────────┤
+│ [Avatar] Subject       2m > │  ← Unread (bold)
+│           Preview body...   │
+│─────────────────────────────│
+│ [Avatar] Read Subject  1h > │  ← Read (normal weight)
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 15 — Settings (SystemSettings.jsx)
+
+**Target**: iOS Settings app — the gold standard
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│ Settings                    │  ← Large title
+├─────────────────────────────┤
+│ [Avatar] Rahim Hassan       │  ← Profile card (top)
+│          Admin · Edit >     │
+├─────────────────────────────┤
+│ GENERAL                     │  ← Section
+│ ○ Theme           Light  >  │  ← Setting row with value
+│ ○ Notifications   On     >  │
+│ ○ Language        English>  │
+├─────────────────────────────┤
+│ WORKSPACE                   │
+│ ○ Company Name           >  │
+│ ○ Work Hours             >  │
+├─────────────────────────────┤
+│ DANGER ZONE                 │
+│ 🔴 Reset All Data           │  ← Destructive red
+└─────────────────────────────┘
+```
+
+---
+
+### PHASE 16 — Admin Pages
+
+**Performance, Reports, Analytics, Database, Archive, Error Logs, Session Logs**
+
+All follow the same pattern:
+- Large title + filter controls
+- Section-grouped inset lists
+- Tap-to-inspect → slide-in detail page or bottom sheet
+- Charts: compact horizontal bar charts (not huge desktop area charts)
+- Stats: horizontal scroll strip of summary cards at top
+
+---
+
+## Implementation Order
+
+| Phase | Component | Priority | Effort |
+|---|---|---|---|
+| 1 | `mobile-app.css` — design system | 🔴 Critical | High |
+| 2 | `App.jsx` — shell polish | 🔴 Critical | Medium |
+| 3 | `Dashboard.jsx` | 🔴 Critical | Medium |
+| 4 | `MyDay.jsx` | 🔴 Critical | Medium |
+| 5 | `InstantWork.jsx` | 🔴 Critical | Medium |
+| 6 | `WhatsApp.jsx` | 🔴 Critical | High |
+| 7 | `EvoBoard.jsx` | 🟡 High | High |
+| 8 | `TeamDirectory.jsx` | 🟡 High | Medium |
+| 9 | `ClientManagement.jsx` | 🟡 High | High |
+| 10 | `NotificationCenter.jsx` | 🟡 High | Low |
+| 11 | `NoticeBoard.jsx` | 🟢 Medium | Medium |
+| 12 | `EvoNotes.jsx` | 🟢 Medium | Medium |
+| 13 | `CalendarView.jsx` | 🟢 Medium | High |
+| 14 | `Meetings.jsx` | 🟢 Medium | Medium |
+| 15 | `Mailbox.jsx` | 🟢 Medium | Medium |
+| 16 | `SystemSettings.jsx` | 🟢 Medium | Medium |
+| 17 | Admin pages (6x) | 🔵 Low | Low each |
+
+---
+
+## Key Design Rules for Every Page
+
+1. **NO table cells on mobile** — use `.mob-cell` list rows
+2. **NO horizontal scrolling content** — vertical stacks only  
+3. **ALL forms = bottom sheets** — never centered modal dialogs
+4. **ALL creation = FAB** — floating orange/blue button above bottom nav
+5. **ALL details = slide-in or 95vh sheet** — never inline expansion
+6. **Section headers** — gray uppercase labels between groups
+7. **Empty states** — always centered icon + message + CTA button
+8. **Loading states** — skeleton shimmer cards, never spinners
+9. **Haptic-like feedback** — `transform: scale(0.96)` on button active
+10. **Dividers** — `0.5px` between list items, never thick borders
+
+---
+
+## Deliverable Confirmation
+
+Once approved, I will implement in this order:
+1. **Full CSS rewrite** — `mobile-app.css` with all native classes
+2. **Phase by phase** — each component gets a completely new `if (isMobile)` block
+3. **No desktop CSS changes** — guaranteed PC UI stays exactly the same
+
+> Ready to begin on your approval. Which phase do you want to start with first?
