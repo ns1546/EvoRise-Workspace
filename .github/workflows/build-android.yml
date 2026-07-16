@@ -32,11 +32,11 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Sync Capacitor
-        run: npx cap sync android
-
       - name: Make gradlew executable
         run: chmod +x ./android/gradlew
+
+      - name: Sync Capacitor
+        run: npx cap sync android
 
       - name: Build APK (Debug)
         working-directory: ./android
