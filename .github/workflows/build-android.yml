@@ -64,7 +64,7 @@ jobs:
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
       - name: Sync Capacitor (Android)
-        run: npx cap sync android --verbose
+        run: npx cap sync android
 
       - name: Build APK (Debug)
         working-directory: ./android
