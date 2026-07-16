@@ -9,9 +9,9 @@ import { safeDelete } from '../utils/trashService';
 const getK = (reversedB64) => window.atob(reversedB64.split('').reverse().join(''));
 
 const GROQ_API_KEYS = [
-    getK("=YGt1SGH6Nb9Jw7uxZwc4NMMguYF3bydGWgLYsuBlBPBcWdUxpXhpsFz_rn3Z"),
-    getK("=Yx3Rnvh6KKRyLVNYbjBklzxYF3bydGWT1w2WtZnZtW7c2KjrhbZAh_rn3Z"),
-    getK("=RRMyAKLmBv2uiVbRLeLRPCNYF3bydGWtcSf3dTATb7Jlxui16bm_rn3Z")
+    getK("=YGS0FzUHZjTiljS3V3NmhnW3NGNN10Z1llRzIWekd0VnxUWzVHbiBlQJN2VkVFewhGcsFzXrN3Z"),
+    getK("=kFezIlb2hmNLtkU5xkVOllYqlmQrxme4llRzIWekd0VUFzdycFdupFdXdzYyskayhmYah2XrN3Z"),
+    getK("=IlUNlXQLxUb2FkY2JTdpZlYSVGTSB1QOllRzIWekd0V0N2UmNDZUFEVidjSshXa1FjNi12XrN3Z")
 ];
 
 let currentKeyIndex = 0;
