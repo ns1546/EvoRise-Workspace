@@ -395,7 +395,6 @@ const InstantWork = () => {
           ))}
         </div>
 
-        {/* ── Countdown Card List ──────────────────────── */}
         <div style={{ flex:1, overflowY:'auto', paddingBottom:120, display:'flex', flexDirection:'column', gap:14 }}>
           {currentList.length === 0 ? (
             <div className="mob-empty">
@@ -411,16 +410,30 @@ const InstantWork = () => {
             </div>
           ) : currentList.map(task => {
             const assigneeName = users.find(u => u.id === task.assigneeId)?.name || 'Unassigned';
-            const timerColor   = isHistory ? '#34C759' : getTimerColor(task);
-            const cardClass    = isHistory ? 'mob-countdown' : getCardClass(task);
-            const timerStr     = isHistory
-              ? (task.completedAt ? '✓ Done' : 'Ended')
-              : (task.timeDisplay || getDurationString(task));
+            
+            if (!isHistory) {
+              return (
+                <CountdownCard
+                  key={task.id}
+                  task={task}
+                  onDone={() => openCompletionModal(task, 'done')}
+                  onFailed={() => openCompletionModal(task, 'failed')}
+                  isMine={activeTab === 'my_active'}
+                  user={users.find(u => u.id === task.assigneeId)}
+                  onDelete={() => deleteTask(task.id, task.title)}
+                  onAddExtraTime={(mins) => addExtraTime(task, mins)}
+                  durationStr={getDurationString(task)}
+                  isMobile={true}
+                />
+              );
+            }
+
+            const timerColor = '#34C759';
+            const cardClass = 'mob-countdown';
+            const timerStr = task.completedAt ? '✓ Done' : 'Ended';
 
             return (
               <div key={task.id} className={cardClass}>
-
-                {/* Card header row */}
                 <div className="mob-countdown__top">
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="mob-countdown__title">
@@ -430,44 +443,13 @@ const InstantWork = () => {
                       {isAdmin && assigneeName !== 'Unassigned' ? `👤 ${assigneeName}` : `📋 ${task.status || 'Active'}`}
                     </div>
                   </div>
-                  {task.isLate && (
-                    <span className="mob-pill mob-pill--red" style={{ flexShrink:0 }}>OVERDUE</span>
-                  )}
-                  {!task.isLate && !isHistory && task.remainingMs < 10 * 60 * 1000 && task.remainingMs >= 0 && (
-                    <span className="mob-pill mob-pill--orange" style={{ flexShrink:0 }}>LOW TIME</span>
-                  )}
-                  {isHistory && (
-                    <span className={`mob-pill ${task.status === 'done' ? 'mob-pill--green' : 'mob-pill--red'}`} style={{ flexShrink:0 }}>
-                      {task.status === 'done' ? 'Done' : 'Failed'}
-                    </span>
-                  )}
+                  <span className={`mob-pill ${task.status === 'done' ? 'mob-pill--green' : 'mob-pill--red'}`} style={{ flexShrink:0 }}>
+                    {task.status === 'done' ? 'Done' : 'Failed'}
+                  </span>
                 </div>
-
-                {/* LIVE TIMER — the centrepiece */}
-                {!isHistory && (
-                  <div className="mob-countdown__timer" style={{ color: timerColor }}>
-                    {timerStr}
-                  </div>
-                )}
-
-                {/* Completion notes (history) */}
-                {isHistory && task.completionNotes && (
+                {task.completionNotes && (
                   <div style={{ fontSize:15, color:'#3C3C43', lineHeight:1.4, padding:'0 2px' }}>
                     {task.completionNotes}
-                  </div>
-                )}
-
-                {/* Action buttons — active tasks only */}
-                {!isHistory && (
-                  <div className="mob-countdown__actions">
-                    <button className="mob-btn mob-btn--green" style={{ flex:1 }}
-                      onClick={() => openCompletionModal(task, 'done')}>
-                      <CheckCircle size={18} /> Done
-                    </button>
-                    <button className="mob-btn mob-btn--red" style={{ flex:1 }}
-                      onClick={() => openCompletionModal(task, 'failed')}>
-                      <X size={18} /> Failed
-                    </button>
                   </div>
                 )}
               </div>
@@ -1072,7 +1054,7 @@ const InstantWork = () => {
   );
 };
 
-const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddExtraTime, durationStr }) => {
+const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddExtraTime, durationStr, isMobile }) => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isLate, setIsLate] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -1113,10 +1095,10 @@ const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddEx
       <div style={{
         background: 'rgba(255,255,255,0.08)', border: `1px solid ${color}35`,
         borderRadius: big ? '12px' : '8px',
-        padding: big ? '10px 12px' : '5px 7px',
+        padding: big ? (isMobile ? '8px 10px' : '10px 12px') : '5px 7px',
         fontFamily: '"Courier New",monospace', fontWeight: 900,
-        fontSize: big ? '30px' : '16px', color,
-        lineHeight: 1, minWidth: big ? '56px' : '32px', textAlign: 'center',
+        fontSize: big ? (isMobile ? '24px' : '30px') : '16px', color,
+        lineHeight: 1, minWidth: big ? (isMobile ? '46px' : '56px') : '32px', textAlign: 'center',
         textShadow: `0 0 18px ${color}90`,
         boxShadow: `0 0 12px ${color}20, inset 0 1px 0 rgba(255,255,255,0.08)`,
         animation: isLow && big ? 'timerPulse 1s ease-in-out infinite' : 'none',
@@ -1133,7 +1115,7 @@ const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddEx
   );
 
   const DigitalClock = ({ big }) => (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: big ? '6px' : '4px' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: big ? (isMobile ? '4px' : '6px') : '4px' }}>
       {d > 0 && <><DigitBlock val={d} label="DAYS" big={big} /><Sep big={big} /></>}
       {(h > 0 || d > 0) && <><DigitBlock val={h} label="HRS" big={big} /><Sep big={big} /></>}
       <DigitBlock val={m} label="MIN" big={big} />
@@ -1162,7 +1144,7 @@ const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddEx
 
   if (isMine) {
     return (
-      <div style={{ ...darkCard, padding: '28px 32px' }}>
+      <div style={{ ...darkCard, padding: isMobile ? '20px 16px' : '28px 32px' }}>
         {/* ambient glow */}
         <div style={{ position: 'absolute', top: '-80px', right: '-80px', width: '280px', height: '280px', borderRadius: '50%', background: glowColor, filter: 'blur(90px)', pointerEvents: 'none', zIndex: 0 }} />
 
@@ -1175,7 +1157,7 @@ const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddEx
         </div>
 
         {/* Title */}
-        <h4 style={{ margin: '0 0 14px 0', fontSize: '22px', color: '#fff', fontWeight: 800, letterSpacing: '-0.3px', position: 'relative', zIndex: 1 }}>{task.title}</h4>
+        <h4 style={{ margin: '0 0 14px 0', fontSize: isMobile ? '18px' : '22px', color: '#fff', fontWeight: 800, letterSpacing: '-0.3px', position: 'relative', zIndex: 1 }}>{task.title}</h4>
 
         {/* Description */}
         {task.description && (
@@ -1185,11 +1167,11 @@ const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddEx
         )}
 
         {/* Clock + Ring + Buttons row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '16px' : '28px', flexWrap: 'wrap', position: 'relative', zIndex: 1, justifyContent: isMobile ? 'center' : 'flex-start' }}>
 
-          {/* SVG Ring — strictly 130Ã—130 box, no overflow */}
-          <div style={{ width: '130px', height: '130px', flexShrink: 0, position: 'relative' }}>
-            <svg width="130" height="130" viewBox="0 0 130 130" style={{ display: 'block', transform: 'rotate(-90deg)' }}>
+          {/* SVG Ring — strictly 130x130 box, no overflow */}
+          <div style={{ width: isMobile ? '100px' : '130px', height: isMobile ? '100px' : '130px', flexShrink: 0, position: 'relative' }}>
+            <svg width={isMobile ? "100" : "130"} height={isMobile ? "100" : "130"} viewBox="0 0 130 130" style={{ display: 'block', transform: 'rotate(-90deg)' }}>
               <circle cx="65" cy="65" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" />
               <circle cx="65" cy="65" r={R} fill="none" stroke={color} strokeWidth="10"
                 strokeDasharray={C} strokeDashoffset={offset} strokeLinecap="round"
@@ -1210,15 +1192,15 @@ const CountdownCard = ({ task, onDone, onFailed, isMine, user, onDelete, onAddEx
           </div>
 
           {/* Buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '10px', width: isMobile ? '100%' : 'auto' }}>
             <button onClick={onDone}
-              style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', border: 'none', padding: '13px 24px', borderRadius: '50px', fontWeight: 800, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(16,185,129,0.4)', whiteSpace: 'nowrap' }}
+              style={{ flex: isMobile ? 1 : 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', border: 'none', padding: '13px 24px', borderRadius: '50px', fontWeight: 800, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(16,185,129,0.4)', whiteSpace: 'nowrap' }}
               onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}>
               <CheckCircle size={16} /> DONE
             </button>
             {isLate && (
               <button onClick={onFailed}
-                style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)', color: '#fff', border: 'none', padding: '13px 24px', borderRadius: '50px', fontWeight: 800, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(239,68,68,0.4)', whiteSpace: 'nowrap' }}
+                style={{ flex: isMobile ? 1 : 'none', background: 'linear-gradient(135deg,#ef4444,#dc2626)', color: '#fff', border: 'none', padding: '13px 24px', borderRadius: '50px', fontWeight: 800, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 8px 24px rgba(239,68,68,0.4)', whiteSpace: 'nowrap' }}
                 onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}>
                 <AlertTriangle size={16} /> FAIL
               </button>
