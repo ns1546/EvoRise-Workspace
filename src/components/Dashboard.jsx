@@ -120,47 +120,7 @@ const Dashboard = () => {
           </>
         )}
 
-        {/* ── Recent Tasks ──────────────────────────────── */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'20px 16px 8px' }}>
-          <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#6D6D72', textTransform:'uppercase', letterSpacing:'0.07em' }}>Recent Tasks</p>
-          <button onClick={() => window.dispatchEvent(new CustomEvent('navigate',{detail:{menu: isAdmin?'evoboard':'myday'}}))}
-            style={{ background:'none', border:'none', fontSize:15, color:'#0066CC', padding:0, fontWeight:500, cursor:'pointer' }}>
-            See All
-          </button>
-        </div>
-        <div className="mob-group">
-          {recentTasks.length === 0 ? (
-            <div className="mob-empty">
-              <div className="mob-empty__icon"><CheckSquare size={32} color="#8E8E93" /></div>
-              <p className="mob-empty__title">No Tasks Yet</p>
-              <p className="mob-empty__sub">Tasks assigned to you appear here.</p>
-            </div>
-          ) : recentTasks.map((t) => {
-            const isDone = t.status === 'Done';
-            return (
-              <div key={t.id} className="mob-task-row"
-                onClick={() => handleInspect({ title: t.customName || t.taskName || 'Task', type:'tasks', data:[t] })}>
-                <div className={`mob-task-row__check ${isDone ? 'done' : ''}`}>
-                  {isDone && <CheckCircle size={14} color="white" />}
-                </div>
-                <div className="mob-task-row__body">
-                  <div className={`mob-task-row__name ${isDone ? 'done' : ''}`}>
-                    {t.customName || t.taskName || t.title || 'Untitled'}
-                  </div>
-                  {t.priority && !isDone && (
-                    <div className="mob-task-row__meta" style={{ color: pColor(t.priority) }}>{t.priority} Priority</div>
-                  )}
-                </div>
-                <div className="mob-task-row__trailing">
-                  {isDone
-                    ? <span className="mob-pill mob-pill--green">Done</span>
-                    : <span style={{ color:'#C7C7CC', fontSize:20 }}>›</span>
-                  }
-                </div>
-              </div>
-            );
-          })}
-        </div>
+
 
         {/* ── Team Overview (Admin only) ────────────────── */}
         {isAdmin && team.length > 0 && (

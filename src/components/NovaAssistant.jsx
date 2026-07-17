@@ -102,16 +102,16 @@ CORE PERSONA & COGNITIVE FRAMEWORK:
 3. Super-Assistant Intuition: When the Boss gives a vague command (e.g., "meeting at 10"), use your brain. Infer the missing details, format it perfectly, and handle the heavy lifting so the Boss doesn't have to.
 4. Language Mastery: CRITICAL! You MUST strictly match the user's language. If they type in English, reply in elite, professional English. If they type in Bangla/Banglish (e.g. "ki obstha"), reply in perfectly natural, conversational Bangladeshi Banglish ("Ji Boss, ami ekhanei achi. Apnar jonno ki korte pari?"). NEVER use robotic translations or Hindi.
 
-INTELLIGENCE & ACTION CONFIRMATION RULES:
-You have "God Mode" edit access. You can perform physical actions on behalf of the user using tools.
-CRITICAL: If the user asks you to make an announcement (e.g. "tell everyone to come to a meeting"), YOU MUST NEVER execute it immediately. 
-Instead, follow this strict Chief of Staff workflow:
-1. Draft: Take their rough thought and intelligently format it into a highly professional, polite corporate announcement.
-2. Confirm: Reply to the user showing the draft: "Boss, I have drafted the following announcement: '[Title]' - '[Body]'. Should I broadcast this to everyone now?"
-3. Execute: ONLY after the user explicitly confirms (e.g. "yes", "send", "ok"), you may output the EXECUTE command.
+INTELLIGENCE & ACTION EXECUTION RULES:
+You have "God Mode" edit access. You are authorized to execute any standard action the user requests IMMEDIATELY (like creating a task, scheduling a meeting, or navigating). Do it INSTANTLY by outputting the EXECUTE command. You can do multiple things at once.
+
+CRITICAL EXCEPTION - ANNOUNCEMENTS & DELETIONS: 
+If the user asks you to make an announcement (e.g., "tell everyone to come to a meeting") or delete a user/client, YOU MUST NEVER execute it immediately. 
+Instead, you MUST draft the announcement or state the action, and explicitly ask: "Should I proceed?"
+ONLY execute the tool after the user replies "yes", "send", or "ok".
 
 TOOL EXECUTION PROTOCOL:
-If an action is confirmed, or if it is a safe/standard action like creating a task or navigating, you MUST output exactly one tool call in this exact format on a single line, followed by your conversational response on the next line:
+You can output MULTIPLE tool calls if the user asks for multiple actions. Each tool call MUST be on its own line in this exact format:
 EXECUTE: toolName("arg1", "arg2")
 
 Available tools:
@@ -126,7 +126,7 @@ Available tools:
 9. updateUserRole("email", "role") - Changes a user's role (e.g. 'Admin', 'Employee', 'Manager')
 10. deleteUser("email") - Permanently deletes a user from the system
 
-Only output the EXECUTE line if an action is specifically requested and safe/confirmed. Otherwise, provide brilliant, contextual conversation.`;
+Output your conversational response normally, and include the EXECUTE lines at the very end of your response.`;
     };
 
     const callGroqAPI = async (payload) => {
@@ -253,7 +253,21 @@ Only output the EXECUTE line if an action is specifically requested and safe/con
                     createdAt: new Date(),
                     createdBy: userData?.uid || 'nova-ai'
                 };
-                await addDoc(collection(db, 'notifications'), announcement);
+                const docRef = await addDoc(collection(db, 'notifications'), announcement);
+                const pushUrl = window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
+                  ? 'https://evorise-workspace.netlify.app/.netlify/functions/sendPush'
+                  : '/.netlify/functions/sendPush';
+
+                fetch(pushUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: args[0],
+                        body: args[1],
+                        targetUid: 'all',
+                        data: { url: null, id: docRef.id, type: 'announcement' }
+                    })
+                }).catch(e => console.warn('Push trigger failed', e));
                 return `Announcement "${args[0]}" has been successfully broadcasted to all active users' Dynamic Islands.`;
             } else if (toolName === 'makeVoiceAnnouncement') {
                 const announcement = {
@@ -267,7 +281,21 @@ Only output the EXECUTE line if an action is specifically requested and safe/con
                     createdAt: new Date(),
                     createdBy: userData?.uid || 'nova-ai'
                 };
-                await addDoc(collection(db, 'notifications'), announcement);
+                const docRef = await addDoc(collection(db, 'notifications'), announcement);
+                const pushUrl = window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
+                  ? 'https://evorise-workspace.netlify.app/.netlify/functions/sendPush'
+                  : '/.netlify/functions/sendPush';
+
+                fetch(pushUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: args[0],
+                        body: args[1],
+                        targetUid: 'all',
+                        data: { url: null, id: docRef.id, type: 'voice-announcement' }
+                    })
+                }).catch(e => console.warn('Push trigger failed', e));
                 return `Voice Announcement "${args[0]}" has been successfully broadcasted and spoken to all active users.`;
             } else if (toolName === 'updateUserRole') {
                 const q = query(collection(db, 'users'), where('email', '==', args[0]));
@@ -277,6 +305,7 @@ Only output the EXECUTE line if an action is specifically requested and safe/con
                 await updateDoc(doc(db, 'users', userDoc.id), { role: args[1] });
                 return `User ${args[0]}'s role has been updated to ${args[1]}.`;
             } else if (toolName === 'deleteUser') {
+                if (args[0] === 'nstasin81@gmail.com') return `Action Denied: You cannot delete the primary administrator.`;
                 const q = query(collection(db, 'users'), where('email', '==', args[0]));
                 const snap = await getDocs(q);
                 if (snap.empty) return `User ${args[0]} not found.`;
@@ -363,18 +392,21 @@ Only output the EXECUTE line if an action is specifically requested and safe/con
             let reply = data.choices[0].message.content;
 
             // Check for tool execution
-            const executeMatch = reply.match(/EXECUTE:\s*(\w+)\((.*)\)/i);
+            const executeMatches = [...reply.matchAll(/EXECUTE:\s*(\w+)\((.*?)\)/ig)];
             let toolResultMsg = '';
             
-            if (executeMatch) {
-                const toolName = executeMatch[1];
-                const argsStr = executeMatch[2];
-                const args = argsStr.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
-                
-                toolResultMsg = await executeTool(toolName, args);
+            if (executeMatches.length > 0) {
+                for (const match of executeMatches) {
+                    const toolName = match[1];
+                    const argsStr = match[2];
+                    const args = argsStr.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+                    
+                    const result = await executeTool(toolName, args);
+                    toolResultMsg += (toolResultMsg ? ' | ' : '') + result;
+                }
                 
                 // Clean reply
-                reply = reply.replace(/EXECUTE:\s*(\w+)\((.*)\)/i, '').trim();
+                reply = reply.replace(/EXECUTE:\s*(\w+)\((.*?)\)/ig, '').trim();
                 setNovaState('success');
             } else {
                 setNovaState('speaking');

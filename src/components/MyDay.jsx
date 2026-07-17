@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +14,7 @@ const MyDay = () => {
   const { logActivity } = useActivity();
   const isMobile = useIsMobile();
   const [tasks, setTasks] = useState([]);
+  const [clients, setClients] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
   const [historyMode, setHistoryMode] = useState(false);
@@ -32,8 +33,18 @@ const MyDay = () => {
       snap.forEach(d => data.push({ id: d.id, ...d.data() }));
       setTasks(data);
     });
-    return () => unsubTasks();
+    const unsubClients = onSnapshot(collection(db, 'clients'), snap => {
+      const data = [];
+      snap.forEach(d => data.push({ id: d.id, ...d.data() }));
+      setClients(data);
+    });
+    return () => { unsubTasks(); unsubClients(); };
   }, []);
+
+  const getClientName = (task) => {
+    const c = clients.find(cl => cl.id === task.clientId);
+    return c ? c.name : 'Internal / No Client';
+  };
 
   const getTaskDisplayTitle = (task) => {
     if (task.customName) return task.customName;
@@ -204,7 +215,7 @@ const MyDay = () => {
         </div>
 
         {/* ── Task List ────────────────────────────────── */}
-        <div style={{ flex:1, overflowY:'auto', paddingBottom:100 }}>
+        <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling: 'touch', paddingBottom:100 }}>
 
           {wizardTasks.length === 0 ? (
             <div className="mob-empty">
@@ -226,6 +237,7 @@ const MyDay = () => {
                     <div className="mob-task-row__check done"><CheckCircle size={14} color="white" /></div>
                     <div className="mob-task-row__body">
                       <div className="mob-task-row__name done">{getTaskDisplayTitle(task)}</div>
+                      {task.clientId && <div className="mob-task-row__meta" style={{ color:'#007AFF', marginTop: '2px', fontSize: '11px', fontWeight: 600 }}>{getClientName(task)}</div>}
                       {task.submissionNotes && <div className="mob-task-row__meta">Note: {task.submissionNotes.slice(0,40)}</div>}
                     </div>
                     <div className="mob-task-row__trailing"><span style={{ color:'#C7C7CC', fontSize:20 }}>›</span></div>
@@ -245,6 +257,7 @@ const MyDay = () => {
                         <div className="mob-task-row__check" />
                         <div className="mob-task-row__body">
                           <div className="mob-task-row__name">{getTaskDisplayTitle(task)}</div>
+                          {task.clientId && <div className="mob-task-row__meta" style={{ color:'#007AFF', marginTop: '2px', fontSize: '11px', fontWeight: 600 }}>{getClientName(task)}</div>}
                           {task.status === 'pending_edit' && <div className="mob-task-row__meta" style={{ color:'#FF9500' }}>Edit Requested</div>}
                         </div>
                         <div className="mob-task-row__trailing">
@@ -265,6 +278,7 @@ const MyDay = () => {
                         <div className="mob-task-row__check" />
                         <div className="mob-task-row__body">
                           <div className="mob-task-row__name">{getTaskDisplayTitle(task)}</div>
+                          {task.clientId && <div className="mob-task-row__meta" style={{ color:'#007AFF', marginTop: '2px', fontSize: '11px', fontWeight: 600 }}>{getClientName(task)}</div>}
                           {task.status === 'pending_edit' && <div className="mob-task-row__meta" style={{ color:'#FF9500' }}>Edit Requested</div>}
                         </div>
                         <div className="mob-task-row__trailing">
@@ -285,6 +299,7 @@ const MyDay = () => {
                         <div className="mob-task-row__check" />
                         <div className="mob-task-row__body">
                           <div className="mob-task-row__name">{getTaskDisplayTitle(task)}</div>
+                          {task.clientId && <div className="mob-task-row__meta" style={{ color:'#007AFF', marginTop: '2px', fontSize: '11px', fontWeight: 600 }}>{getClientName(task)}</div>}
                         </div>
                         <div className="mob-task-row__trailing">
                           <span style={{ color:'#C7C7CC', fontSize:20 }}>›</span>
@@ -303,6 +318,7 @@ const MyDay = () => {
                         <div className="mob-task-row__check done"><CheckCircle size={14} color="white" /></div>
                         <div className="mob-task-row__body">
                           <div className="mob-task-row__name done">{getTaskDisplayTitle(task)}</div>
+                          {task.clientId && <div className="mob-task-row__meta" style={{ color:'#007AFF', marginTop: '2px', fontSize: '11px', fontWeight: 600 }}>{getClientName(task)}</div>}
                         </div>
                         <div className="mob-task-row__trailing">
                           <span className="mob-pill mob-pill--green">Done</span>
@@ -347,9 +363,14 @@ const MyDay = () => {
                       {mobileDetailTask.status==='Done' ? 'Completed' : 'Pending'}
                     </span>
                   </div>
-                  <h2 style={{ margin:'0 0 16px', fontSize:22, fontWeight:700, color:'#000', letterSpacing:'-0.02em', lineHeight:1.2 }}>
+                  <h2 style={{ margin:'0 0 4px', fontSize:22, fontWeight:700, color:'#000', letterSpacing:'-0.02em', lineHeight:1.2 }}>
                     {getTaskDisplayTitle(mobileDetailTask)}
                   </h2>
+                  {mobileDetailTask.clientId && (
+                    <div style={{ color: '#007AFF', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
+                      Client: {getClientName(mobileDetailTask)}
+                    </div>
+                  )}
                 </div>
 
                 {/* Instructions */}
@@ -513,8 +534,9 @@ const MyDay = () => {
                       ) : (
                         <div style={{ width: '12px', height: '12px', borderRadius: '50%', border: `2px solid ${isActive ? 'white' : 'var(--color-ocean-blue)'}`, flexShrink: 0 }} />
                       )}
-                      <div style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isDone ? 'line-through' : 'none', opacity: isDone && !isActive ? 0.6 : 1 }}>
-                        {getTaskDisplayTitle(task)}
+                      <div style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isDone ? 'line-through' : 'none', opacity: isDone && !isActive ? 0.6 : 1, display: 'flex', flexDirection: 'column' }}>
+                        <div>{getTaskDisplayTitle(task)}</div>
+                        {task.clientId && <div style={{ fontSize: '11px', color: '#007AFF', marginTop: '2px', fontWeight: 600 }}>{getClientName(task)}</div>}
                       </div>
                     </div>
                     
@@ -582,6 +604,11 @@ const MyDay = () => {
                   <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>
                     {getTaskDisplayTitle(activeTask)}
                   </h2>
+                  {activeTask.clientId && (
+                    <div style={{ color: '#007AFF', fontSize: '13px', fontWeight: 600, marginTop: '4px' }}>
+                      Client: {getClientName(activeTask)}
+                    </div>
+                  )}
                 </div>
                 <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', background: 'white', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
                   Task {activeTaskGlobalIndex + 1} of {wizardTasks.length}

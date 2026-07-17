@@ -159,7 +159,7 @@ const NoticeBoard = () => {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:14, fontWeight:700, color:'#000' }}>{notice.authorName}</div>
                     <div style={{ fontSize:11, color:'#8E8E93' }}>
-                      {notice.authorRole} Â· {notice.createdAt?.toDate?.()?.toLocaleDateString()}
+                      {notice.authorRole} · {notice.createdAt?.toDate?.()?.toLocaleDateString()}
                     </div>
                   </div>
                   {isAdmin && (
@@ -302,7 +302,7 @@ const NoticeBoard = () => {
             const isExpanded = expandedNotice === notice.id;
             const liked = (notice.likes || []).includes(currentUser?.uid);
             return (
-              <div key={notice.id} style={{ background: 'var(--bg-panel)', border: '1px solid var(--glass-border)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+              <div key={notice.id} style={{ flexShrink: 0, background: 'var(--bg-panel)', border: '1px solid var(--glass-border)', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
                 <div style={{ padding: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', gap: '16px', flex: 1 }}>

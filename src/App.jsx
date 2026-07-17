@@ -1,4 +1,5 @@
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   LayoutDashboard, 
   Users, 
@@ -32,7 +33,8 @@ import {
   MoreHorizontal,
   Home,
   Notebook,
-  Zap
+  Zap,
+  Settings2
 } from 'lucide-react';
 import './index.css';
 import './mobile-app.css';
@@ -73,6 +75,8 @@ import TaskReminderService from './components/TaskReminderService';
 import DynamicIsland from './components/DynamicIsland';
 import GlobalHotkeys from './components/GlobalHotkeys';
 import InstallAppPrompt from './components/InstallAppPrompt';
+import LinkHub from './components/LinkHub';
+import ControlCenter from './components/ControlCenter';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Keyboard } from '@capacitor/keyboard';
@@ -80,6 +84,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 
 const App = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isControlCenterOpen, setIsControlCenterOpen] = useState(false);
   const [activeMenu, _setActiveMenu] = useState('dashboard');
   const [isPending, startTransition] = useTransition();
 
@@ -116,6 +121,7 @@ const App = () => {
   const [isCompactView, setIsCompactView] = useState(() => localStorage.getItem('compactView') === 'true');
   const [activeWebRTCCall, setActiveWebRTCCall] = useState(null); // { roomId, type }
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const [isTasksMenuOpen, setIsTasksMenuOpen] = useState(false);
   const { currentUser, userData, logout, systemLocked, lockSystem, unlockSystem, permissionDenied, forceUnlock, isUnlocking } = useAuth();
   const { unreadCount, badges, setIsDrawerOpen, markModuleAsRead } = useNotifications();
   const { settings } = useSettings();
@@ -134,6 +140,29 @@ const App = () => {
     return () => window.removeEventListener('incoming-reminder', handleIncomingReminder);
   }, [settings?.general?.autoNavigateOnReminder]);
 
+  React.useEffect(() => {
+    const hasGreeted = sessionStorage.getItem('novaGreeted');
+    if (!hasGreeted && userData?.name) {
+      sessionStorage.setItem('novaGreeted', 'true');
+      setTimeout(() => {
+        const hour = new Date().getHours();
+        let greeting = 'Good evening';
+        if (hour < 12) greeting = 'Good morning';
+        else if (hour < 18) greeting = 'Good afternoon';
+        
+        window.dispatchEvent(new CustomEvent('TRIGGER_DYNAMIC_ISLAND', {
+          detail: {
+            type: 'nova-announcement',
+            data: {
+              title: 'Nova',
+              body: `${greeting}, ${userData.name.split(' ')[0]}. Welcome back to the Workspace.`
+            }
+          }
+        }));
+      }, 2000);
+    }
+  }, [userData]);
+
   const pageTitles = {
     dashboard: 'Dashboard', myday: 'My Day', evonotes: 'Evo Notes',
     clients: 'Clients & Services', evoboard: 'EvoBoard', instant: 'Instant Work',
@@ -143,6 +172,7 @@ const App = () => {
     noticeboard: 'Notice Board', performance: 'Performance',
     reports: 'Reports', analytics: 'Analytics', database: 'Database',
     archive: 'Archive', errorlogs: 'Error Logs', settings: 'Settings',
+    linkhub: 'Link Hub',
   };
   // Pages that need full-height zero-padding on mobile
   const fullHeightPages = ['whatsapp', 'evonotes', 'myday', 'noticeboard', 'meetings', 'performance'];
@@ -296,6 +326,7 @@ const App = () => {
   const mobileNavNavigate = (menu) => {
     setActiveMenu(menu);
     setIsMobileMoreOpen(false);
+    setIsTasksMenuOpen(false);
   };
 
   return (
@@ -329,6 +360,7 @@ const App = () => {
         <div className="sidebar-nav-scroll">
           {!isSidebarCollapsed && <div style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-hint)', padding: '6px 10px 3px', textTransform: 'uppercase', letterSpacing: '0.10em' }}>Workspace</div>}
           <MenuButton icon={<LayoutDashboard size={18} />} label="Dashboard" isActive={activeMenu === 'dashboard'} onClick={() => setActiveMenu('dashboard')} badge={badges['dashboard'] > 0 ? badges['dashboard'] : null} isCollapsed={isSidebarCollapsed} />
+          <MenuButton icon={<Notebook size={18} />} label="Link Hub" isActive={activeMenu === 'linkhub'} onClick={() => setActiveMenu('linkhub')} isCollapsed={isSidebarCollapsed} />
           <MenuButton icon={<Target size={18} />} label="My Day" isActive={activeMenu === 'myday'} onClick={() => setActiveMenu('myday')} badge={badges['myday'] > 0 ? badges['myday'] : null} isCollapsed={isSidebarCollapsed} />
           <MenuButton icon={<FileText size={18} />} label="Evo Notes" isActive={activeMenu === 'evonotes'} onClick={() => setActiveMenu('evonotes')} badge={badges['evonotes'] > 0 ? badges['evonotes'] : null} isCollapsed={isSidebarCollapsed} />
           {isAdmin && <MenuButton icon={<Building2 size={18} />} label="Clients & Services" isActive={activeMenu === 'clients'} onClick={() => setActiveMenu('clients')} badge={badges['clients'] > 0 ? badges['clients'] : null} isCollapsed={isSidebarCollapsed} />}
@@ -448,7 +480,7 @@ const App = () => {
         )}
 
         {/* PC Top Navigation */}
-        <header className="top-nav glass-panel" style={{ display: isMobile ? 'none' : 'flex' }}>
+        <header className="top-nav glass-panel" style={{ display: isMobile ? 'none' : 'flex', overflow: 'visible', zIndex: 100 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
             <div 
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
@@ -498,6 +530,18 @@ const App = () => {
                 <span style={{ position: 'absolute', top: '-4px', right: '-4px', minWidth: '18px', height: '18px', background: 'var(--color-deep-orange)', borderRadius: '9px', border: '2px solid var(--bg-matte)', fontSize: '10px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>{unreadCount > 99 ? '99+' : unreadCount}</span>
               )}
             </div>
+            
+            {/* Control Center Toggle */}
+            <div style={{ position: 'relative' }}>
+              <div 
+                className="matte-3d" 
+                onClick={(e) => { e.stopPropagation(); setIsControlCenterOpen(!isControlCenterOpen); }}
+                style={{ cursor: 'pointer', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', background: isControlCenterOpen ? 'var(--blue)' : 'var(--bg-matte)', color: isControlCenterOpen ? 'white' : 'var(--text-primary)' }}
+              >
+                <Settings2 size={20} />
+              </div>
+              <ControlCenter isOpen={isControlCenterOpen} onClose={() => setIsControlCenterOpen(false)} logout={logout} />
+            </div>
           </div>
         </header>
 
@@ -505,6 +549,7 @@ const App = () => {
         <main className={`main-content glass-panel ${isFullHeight ? 'full-height-mobile' : ''}`} style={{ flex: 1, overflowY: 'auto', position: 'relative', padding: isMobile ? (isFullHeight ? '0' : '16px') : '30px' }}>
           <GlobalErrorBoundary key={activeMenu}>
             {activeMenu === 'dashboard' && <Dashboard />}
+            {activeMenu === 'linkhub' && <LinkHub />}
             {activeMenu === 'myday' && <MyDay />}
             {activeMenu === 'evonotes' && <EvoNotes />}
             {activeMenu === 'clients' && <ClientManagement />}
@@ -576,11 +621,13 @@ const App = () => {
           {/* Tasks / EvoBoard */}
           <button
             className={`mobile-nav-tab ${activeMenu === 'instant' || activeMenu === 'evoboard' ? 'active' : ''}`}
-            onClick={() => mobileNavNavigate('instant')}
+            onClick={() => { setIsTasksMenuOpen(prev => !prev); setIsMobileMoreOpen(false); }}
             aria-label="Tasks"
           >
-            <div className="mobile-nav-tab__icon-wrap">
+            <div className={`mobile-nav-tab__icon-wrap ${(badges?.evoboard > 0 || badges?.instant > 0) ? 'animate-icon-ring' : ''}`}>
               <CheckSquare size={26} strokeWidth={activeMenu === 'instant' || activeMenu === 'evoboard' ? 2.5 : 2} color={activeMenu === 'instant' || activeMenu === 'evoboard' ? 'var(--blue)' : '#8E8E93'} />
+              {badges?.evoboard > 0 && <span className="mobile-nav-badge" style={{ right: 'auto', left: '-2px', background: 'var(--color-deep-orange)' }}>{badges.evoboard > 9 ? '9+' : badges.evoboard}</span>}
+              {badges?.instant > 0 && <span className="mobile-nav-badge" style={{ right: '-2px', background: '#007AFF' }}>{badges.instant > 9 ? '9+' : badges.instant}</span>}
             </div>
             <span className="mobile-nav-tab__label" style={{ color: activeMenu === 'instant' || activeMenu === 'evoboard' ? 'var(--blue)' : '#8E8E93' }}>Tasks</span>
           </button>
@@ -591,8 +638,9 @@ const App = () => {
             onClick={() => mobileNavNavigate('whatsapp')}
             aria-label="Chat"
           >
-            <div className="mobile-nav-tab__icon-wrap">
+            <div className={`mobile-nav-tab__icon-wrap ${badges?.whatsapp > 0 || badges?.mailbox > 0 ? 'animate-icon-ring' : ''}`}>
               <MessageCircle size={26} strokeWidth={activeMenu === 'whatsapp' || activeMenu === 'mailbox' ? 2.5 : 2} color={activeMenu === 'whatsapp' || activeMenu === 'mailbox' ? 'var(--blue)' : '#8E8E93'} />
+              {(badges?.whatsapp > 0 || badges?.mailbox > 0) && <span className="mobile-nav-badge">{(badges?.whatsapp || 0) + (badges?.mailbox || 0) > 9 ? '9+' : (badges?.whatsapp || 0) + (badges?.mailbox || 0)}</span>}
             </div>
             <span className="mobile-nav-tab__label" style={{ color: activeMenu === 'whatsapp' || activeMenu === 'mailbox' ? 'var(--blue)' : '#8E8E93' }}>Chat</span>
           </button>
@@ -603,8 +651,9 @@ const App = () => {
             onClick={() => mobileNavNavigate('myday')}
             aria-label="My Day"
           >
-            <div className="mobile-nav-tab__icon-wrap">
+            <div className={`mobile-nav-tab__icon-wrap ${badges?.myday > 0 ? 'animate-icon-ring' : ''}`}>
               <Target size={26} strokeWidth={activeMenu === 'myday' ? 2.5 : 2} color={activeMenu === 'myday' ? 'var(--blue)' : '#8E8E93'} />
+              {badges?.myday > 0 && <span className="mobile-nav-badge">{badges.myday > 9 ? '9+' : badges.myday}</span>}
             </div>
             <span className="mobile-nav-tab__label" style={{ color: activeMenu === 'myday' ? 'var(--blue)' : '#8E8E93' }}>My Day</span>
           </button>
@@ -612,11 +661,12 @@ const App = () => {
           {/* More */}
           <button
             className={`mobile-nav-tab ${isMobileMoreOpen ? 'active' : ''}`}
-            onClick={() => setIsMobileMoreOpen(true)}
+            onClick={() => setIsMobileMoreOpen(prev => !prev)}
             aria-label="More"
           >
             <div className="mobile-nav-tab__icon-wrap">
               <MoreHorizontal size={26} strokeWidth={isMobileMoreOpen ? 2.5 : 2} color={isMobileMoreOpen ? 'var(--blue)' : '#8E8E93'} />
+              {unreadCount > 0 && <span className="mobile-nav-badge" style={{ background: 'var(--color-deep-orange)' }}>{unreadCount > 99 ? '99+' : unreadCount}</span>}
             </div>
             <span className="mobile-nav-tab__label" style={{ color: isMobileMoreOpen ? 'var(--blue)' : '#8E8E93' }}>More</span>
           </button>
@@ -626,7 +676,7 @@ const App = () => {
       {/* ══════════════════════════════════════════════
            MOBILE "MORE" SHEET
           ══════════════════════════════════════════════ */}
-      {isMobile && isMobileMoreOpen && (
+      {isMobile && isMobileMoreOpen && createPortal(
         <>
           <div className="mobile-more-overlay" onClick={() => setIsMobileMoreOpen(false)} />
           <div className="mobile-more-sheet">
@@ -645,6 +695,7 @@ const App = () => {
               {isAdmin && (
                 <MobileMoreItem id="more-evoboard" isActive={activeMenu === 'evoboard'} icon={<Briefcase size={18} />} iconBg="rgba(42,159,175,0.12)" iconColor="var(--teal)" label="EvoBoard" onClick={() => mobileNavNavigate('evoboard')} />
               )}
+              <MobileMoreItem id="more-linkhub" isActive={activeMenu === 'linkhub'} icon={<Notebook size={18} />} iconBg="rgba(0,150,136,0.12)" iconColor="#009688" label="Link Hub" onClick={() => mobileNavNavigate('linkhub')} />
               <MobileMoreItem id="more-evonotes" isActive={activeMenu === 'evonotes'} icon={<FileText size={18} />} iconBg="rgba(240,115,32,0.12)" iconColor="var(--orange)" label="Evo Notes" onClick={() => mobileNavNavigate('evonotes')} />
             </div>
 
@@ -688,7 +739,45 @@ const App = () => {
 
             <div style={{ height: '20px' }} />
           </div>
-        </>
+        </>, document.body
+      )}
+
+      {/* ══════════════════════════════════════════════
+           MOBILE "TASKS" MENU
+          ══════════════════════════════════════════════ */}
+      {isMobile && isTasksMenuOpen && createPortal(
+        <>
+          <div className="mobile-more-overlay" onClick={() => setIsTasksMenuOpen(false)} />
+          <div className="mobile-more-sheet">
+            <div className="mobile-more-sheet__handle" />
+            <div className="mobile-more-sheet__header">Select Task Module</div>
+
+            <div className="mobile-more-section">
+              <MobileMoreItem 
+                id="tasks-evoboard" 
+                isActive={activeMenu === 'evoboard'} 
+                icon={<Briefcase size={18} />} 
+                iconBg="rgba(42,159,175,0.12)" 
+                iconColor="var(--teal)" 
+                label="EvoBoard" 
+                badge={badges?.evoboard > 0 ? badges.evoboard : null}
+                onClick={() => mobileNavNavigate('evoboard')} 
+              />
+              <MobileMoreItem 
+                id="tasks-instant" 
+                isActive={activeMenu === 'instant'} 
+                icon={<CheckSquare size={18} />} 
+                iconBg="rgba(0,102,204,0.12)" 
+                iconColor="var(--color-ocean-blue)" 
+                label="Quick Tasks" 
+                badge={badges?.instant > 0 ? badges.instant : null}
+                onClick={() => mobileNavNavigate('instant')} 
+              />
+            </div>
+            
+            <div style={{ height: '20px' }} />
+          </div>
+        </>, document.body
       )}
 
       <GlobalToastOverlay />

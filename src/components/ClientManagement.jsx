@@ -181,7 +181,7 @@ const ClientManagement = () => {
           title: 'New Client Created',
           body: `${cleanedClient.name} was added to the system.`,
           module: 'clients',
-          targetUid: 'all',
+          targetUid: 'admin',
           type: 'success'
         });
       }
@@ -243,7 +243,7 @@ const ClientManagement = () => {
           title: 'New Package Created',
           body: `Package "${cleanedPackage.name}" is now available.`,
           module: 'clients',
-          targetUid: 'all',
+          targetUid: 'admin',
           type: 'info'
         });
       }
@@ -253,7 +253,7 @@ const ClientManagement = () => {
   };
 
   const handleDeletePackage = async (id) => {
-    if (window.confirm("Move this agency package to Archive Trash?")) await safeDelete('system_packages', id, userData);
+    if (window.confirm("Delete this agency package?")) await deleteDoc(doc(db, 'system_packages', id));
   };
 
   const handleApplyPackageToClient = async (e) => {
@@ -311,7 +311,7 @@ const ClientManagement = () => {
         title: 'Package Applied',
         body: `Package "${pkg.name}" was applied to client "${activeClient.name}".`,
         module: 'clients',
-        targetUid: 'all',
+        targetUid: 'admin',
         type: 'info'
       });
       
@@ -612,8 +612,9 @@ const ClientManagement = () => {
                       <div className="mob-task-row__name">#{svc.prioritySeq} {svc.name}</div>
                       <div className="mob-task-row__meta">Qty: {svc.quantity}</div>
                     </div>
-                    <div className="mob-task-row__trailing">
-                      <button onClick={() => { setServiceForms([svc]); setEditingServiceId(svc.id); setIsServiceModalOpen(true); }} style={{ background:'none', border:'none', color:'#007AFF', cursor:'pointer', fontSize:13 }}>Edit</button>
+                    <div style={{ display:'flex', alignItems:'center', gap: 6, flexShrink: 0 }}>
+                      <button onClick={(e) => { e.stopPropagation(); setServiceForms([svc]); setEditingServiceId(svc.id); setIsServiceModalOpen(true); }} style={{ background:'rgba(0,122,255,0.1)', border:'none', color:'#007AFF', cursor:'pointer', fontSize:12, fontWeight:600, padding:'4px 10px', borderRadius:8 }}>Edit</button>
+                      <button onClick={(e) => { e.stopPropagation(); if(window.confirm('Remove service?')) deleteDoc(doc(db, `clients/${activeClient.id}/services`, svc.id)); }} style={{ background:'rgba(255,59,48,0.1)', border:'none', color:'#FF3B30', cursor:'pointer', fontSize:12, fontWeight:600, padding:'4px 10px', borderRadius:8 }}>Del</button>
                     </div>
                   </div>
                 ))}
@@ -644,7 +645,7 @@ const ClientManagement = () => {
                       <div className="mob-task-row__body">
                         <div className={`mob-task-row__name${task.isDone?' done':''}`}>{task.taskName}</div>
                       </div>
-                      <div className="mob-task-row__trailing" style={{ gap:12 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap: 12, flexShrink: 0 }}>
                         <Edit size={14} style={{ cursor:'pointer', color:'#007AFF' }} onClick={() => { setWorkflowForms([{taskName:task.taskName}]); setEditingWorkflowId(task.id); setIsWorkflowModalOpen(true); }} />
                         <Trash2 size={14} style={{ cursor:'pointer', color:'#FF3B30' }} onClick={() => deleteDoc(doc(db, `clients/${activeClient.id}/workflows`, task.id))} />
                       </div>
@@ -657,15 +658,21 @@ const ClientManagement = () => {
           </div>
 
           {/* Client action buttons */}
-          <div style={{ padding:'0 16px 24px', display:'flex', gap:8 }}>
+          <div style={{ padding:'0 16px 24px', display:'flex', flexDirection:'column', gap:8 }}>
             <button onClick={() => { setIsAssignPackageModalOpen(true); setSelectedPackageToAssign(null); }}
-              className="mob-btn mob-btn--blue" style={{ flex:1 }}>
+              className="mob-btn mob-btn--blue" style={{ width:'100%' }}>
               <PackageOpen size={18}/> Import Package
             </button>
-            <button onClick={() => { setClientForm({...defaultClientForm,...activeClient,customFields:activeClient.customFields||[]}); setEditingClientId(activeClient.id); setIsClientModalOpen(true); }}
-              className="mob-btn mob-btn--ghost" style={{ flex:1 }}>
-              <Edit size={18}/> Edit
-            </button>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { setClientForm({...defaultClientForm,...activeClient,customFields:activeClient.customFields||[]}); setEditingClientId(activeClient.id); setIsClientModalOpen(true); }}
+                className="mob-btn mob-btn--ghost" style={{ flex:1 }}>
+                <Edit size={18}/> Edit Client
+              </button>
+              <button onClick={() => setClientToDelete(activeClient)}
+                style={{ background:'rgba(255,59,48,0.1)', border:'none', color:'#FF3B30', borderRadius:12, padding:'12px 20px', fontWeight:600, fontSize:15, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6, flexShrink:0 }}>
+                <Trash2 size={18}/>
+              </button>
+            </div>
           </div>
 
           {/* Modals reused */}
@@ -854,7 +861,10 @@ const ClientManagement = () => {
                         <div className="mob-task-row__name">{pkg.name}</div>
                         <div className="mob-task-row__meta">{pkg.services?.length||0} Services · {pkg.workflows?.length||0} Tasks</div>
                       </div>
-                      <span style={{ color:'#C7C7CC', fontSize:20 }}>›</span>
+                      <div className="mob-task-row__trailing" style={{ gap: 8 }}>
+                        <span style={{ color:'#C7C7CC', fontSize:20 }}>›</span>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeletePackage(pkg.id); }} style={{ background:'rgba(255,59,48,0.1)', border:'none', color:'#FF3B30', borderRadius:8, padding:'4px 8px', cursor:'pointer', fontSize:13, fontWeight:600 }}>Del</button>
+                      </div>
                     </div>
                   ))}
                 </div>

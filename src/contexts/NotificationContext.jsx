@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { db, messaging } from '../firebase';
-import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, limit, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, limit, serverTimestamp, writeBatch, arrayUnion } from 'firebase/firestore';
 import { getToken } from 'firebase/messaging';
 import { useAuth } from './AuthContext';
 import { Capacitor } from '@capacitor/core';
@@ -15,10 +15,47 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [toasts, setToasts] = useState([]);        // Visible toast queue (max 5)
   const [badges, setBadges] = useState({});         // { evoboard: 3, mailbox: 1, ... }
+  const [taskBadges, setTaskBadges] = useState({ myday: 0, evoboard: 0 }); // Live task counts
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const toastQueue = useRef([]);                    // Internal buffer (crash-proof)
   const processingToast = useRef(false);
   const unsubRef = useRef(null);
+
+  // ─── Real-time Firestore Tasks listener (for Badges) ─────────────────────────
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsubTasks = onSnapshot(collection(db, 'tasks'), (snap) => {
+      let myDayCount = 0;
+      let evoboardCount = 0;
+      const today = new Date().toISOString().split('T')[0];
+      
+      snap.forEach(d => {
+        const t = d.data();
+        const isDone = t.status === 'Done' || t.status === 'pending_edit';
+        
+        if (!isDone) {
+          // MyDay Logic: assigned to current user, created on or before today
+          if (t.assigneeId === currentUser.uid) {
+            let tDate = '';
+            if (t.createdAt) {
+               try {
+                 const dateObj = typeof t.createdAt === 'number' ? new Date(t.createdAt) : (t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt));
+                 if (!isNaN(dateObj.getTime())) tDate = dateObj.toISOString().split('T')[0];
+               } catch(e){}
+            }
+            if (tDate <= today) myDayCount++;
+          }
+          
+          // EvoBoard Logic: Unassigned tasks
+          if (!t.assigneeId) {
+            evoboardCount++;
+          }
+        }
+      });
+      setTaskBadges({ myday: myDayCount, evoboard: evoboardCount });
+    });
+    return () => unsubTasks();
+  }, [currentUser?.uid]);
 
   // ─── Real-time Firestore listener ────────────────────────────────────────────
   useEffect(() => {
@@ -33,7 +70,9 @@ export const NotificationProvider = ({ children }) => {
       });
       PushNotifications.addListener('registration', (token) => {
         console.log('Native Push Token:', token.value);
-        // Future: Save this token to the user document for targeted backend pushes
+        updateDoc(doc(db, 'users', currentUser.uid), {
+          fcmTokens: arrayUnion(token.value)
+        }).catch(e => console.warn('Failed to save native token', e));
       });
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
         console.log('Push received in foreground:', notification);
@@ -47,7 +86,12 @@ export const NotificationProvider = ({ children }) => {
               if (permission === 'granted' && messaging) {
                 getToken(messaging, { serviceWorkerRegistration: registration })
                   .then(token => {
-                    if (token) console.log('Web FCM Token generated:', token);
+                    if (token) {
+                      console.log('Web FCM Token generated:', token);
+                      updateDoc(doc(db, 'users', currentUser.uid), {
+                        fcmTokens: arrayUnion(token)
+                      }).catch(e => console.warn('Failed to save PWA token', e));
+                    }
                   }).catch(err => console.warn('FCM token fetch failed', err));
               }
             });
@@ -65,7 +109,8 @@ export const NotificationProvider = ({ children }) => {
       const data = [];
       snap.forEach(d => {
         const notifData = d.data();
-        if (notifData.targetUid === currentUser.uid || notifData.targetUid === 'all' || (notifData.targetUid === 'admin' && userData?.role === 'Admin')) {
+        const isAdmin = ['Admin', 'Partner', 'Administrator'].includes(userData?.role);
+        if (notifData.targetUid === currentUser.uid || notifData.targetUid === 'all' || (isAdmin && notifData.targetUid === 'admin')) {
           data.push({ id: d.id, ...notifData });
         }
       });
@@ -80,10 +125,14 @@ export const NotificationProvider = ({ children }) => {
       setBadges(newBadges);
 
       // Detect new notifications (not yet seen) and push to toast queue
-      const newOnes = data.filter(n =>
-        !n.readBy?.includes(currentUser.uid) &&
-        n.createdAt?.toMillis?.() > (Date.now() - 8000)   // within last 8 sec = "just arrived"
-      );
+      const newOnes = data.filter(n => {
+        if (n.readBy?.includes(currentUser.uid)) return false;
+        // If createdAt is null (pending serverTimestamp), it's definitely brand new locally!
+        if (!n.createdAt) return true;
+        // If it's a Firestore Timestamp or JS Date, compare it
+        const ts = n.createdAt.toMillis ? n.createdAt.toMillis() : (n.createdAt.getTime ? n.createdAt.getTime() : Date.now());
+        return ts > (Date.now() - 8000);
+      });
       newOnes.forEach(n => {
         enqueueToast(n);
         if (n.type === 'reminder' && n.reminderFor) {
@@ -267,20 +316,40 @@ export const NotificationProvider = ({ children }) => {
 
   // ─── Send Notification (System API) ─────────────────────────────────────────
   const sendNotification = useCallback(async ({ title, body, module, targetUid = 'all', type = 'info', actionUrl = null, reminderFor = null }) => {
-    await addDoc(collection(db, 'notifications'), {
-      title,
-      body,
-      module,
-      targetUid,
-      type,         // 'info' | 'success' | 'warning' | 'error' | 'reminder'
-      actionUrl,
-      reminderFor,
-      readBy: [],
-      deletedBy: [],
-      reminderSentCount: reminderFor ? 1 : 0,
-      createdAt: serverTimestamp(),
-      createdBy: currentUser?.uid || 'system',
-    });
+    try {
+      const docRef = await addDoc(collection(db, 'notifications'), {
+        title,
+        body,
+        module,
+        targetUid,
+        type,         // 'info' | 'success' | 'warning' | 'error' | 'reminder'
+        actionUrl,
+        reminderFor,
+        readBy: [],
+        deletedBy: [],
+        reminderSentCount: reminderFor ? 1 : 0,
+        createdAt: serverTimestamp(),
+        createdBy: currentUser?.uid || 'system',
+      });
+
+      // Trigger Netlify Push Function for background mobile notifications
+      const pushUrl = window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
+        ? 'https://evorise-workspace.netlify.app/.netlify/functions/sendPush'
+        : '/.netlify/functions/sendPush';
+
+      fetch(pushUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          body,
+          targetUid,
+          data: { url: actionUrl, id: docRef.id, type }
+        })
+      }).catch(e => console.warn('Push notification trigger failed:', e));
+    } catch (e) {
+      console.error('Error adding notification:', e);
+    }
   }, [currentUser?.uid]);
 
   // ─── Send Manual Reminder ────────────────────────────────────────────────────
@@ -296,10 +365,35 @@ export const NotificationProvider = ({ children }) => {
 
   const unreadCount = notifications.filter(n => !n.readBy?.includes(currentUser?.uid)).length;
 
+  // ─── PWA App Badge Sync ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if ('setAppBadge' in navigator) {
+      const mydayTasks = taskBadges.myday || 0;
+      const evoboardTasks = (userData?.role === 'Admin' || userData?.role === 'Partner' || userData?.role === 'Administrator') ? (taskBadges.evoboard || 0) : 0;
+      const totalCount = unreadCount + mydayTasks + evoboardTasks;
+      
+      try {
+        if (totalCount > 0) {
+          navigator.setAppBadge(totalCount).catch(e => console.warn('App badge set error', e));
+        } else {
+          navigator.clearAppBadge().catch(e => console.warn('App badge clear error', e));
+        }
+      } catch (e) {
+        console.warn('App Badging API not supported or failed', e);
+      }
+    }
+  }, [unreadCount, taskBadges, userData?.role]);
+
   return (
     <NotificationContext.Provider value={{
       notifications: notifications.filter(n => !n.deletedBy?.includes(currentUser?.uid)), 
-      toasts, badges, unreadCount,
+      toasts, 
+      badges: {
+         ...badges,
+         myday: (badges.myday || 0) + (taskBadges.myday || 0),
+         evoboard: (badges.evoboard || 0) + ((userData?.role === 'Admin' || userData?.role === 'Partner' || userData?.role === 'Administrator') ? taskBadges.evoboard : 0)
+      }, 
+      unreadCount,
       isDrawerOpen, setIsDrawerOpen,
       markAsRead, markAllAsRead, markModuleAsRead,
       deleteNotification, deleteAllNotifications,

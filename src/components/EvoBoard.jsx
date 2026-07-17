@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, writeBatch, addDoc, query } from 'firebase/firestore';
-import { CheckSquare, Clock, AlertCircle, CheckCircle, Users as UsersIcon, Filter, Search, Edit, ListTodo, Plus, X, Calendar, LayoutGrid, List, Briefcase, ArrowUp, ArrowDown, Send, Bell, Link2, Trash2, ChevronRight, Menu } from 'lucide-react';
+import { CheckSquare, Clock, AlertCircle, CheckCircle, Users as UsersIcon, Filter, Search, Edit, ListTodo, Plus, X, Calendar, LayoutGrid, List, Briefcase, ArrowUp, ArrowDown, Send, Bell, Link2, Trash2, ChevronRight, ChevronLeft, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { useActivity } from '../contexts/ActivityContext';
@@ -115,6 +116,20 @@ const EvoBoard = () => {
     };
     window.addEventListener('mobile-fab-evoboard', handler);
     return () => window.removeEventListener('mobile-fab-evoboard', handler);
+  }, []);
+
+  // Global close-modals listener for back button navigation
+  useEffect(() => {
+    const handleCloseModals = () => {
+      setIsTaskModalOpen(false);
+      setIsCreateTaskModalOpen(false);
+      setMobileDetail(null);
+      setMobileCreateOpen(false);
+      setIsMobileFilterOpen(false);
+      setEditingField({ id: null, field: null, value: '' });
+    };
+    window.addEventListener('close-modals', handleCloseModals);
+    return () => window.removeEventListener('close-modals', handleCloseModals);
   }, []);
 
   // Fetch Data
@@ -590,7 +605,7 @@ const EvoBoard = () => {
       title: 'Task Submitted',
       body: `${userData?.name || 'A user'} completed: ${getTaskDisplayTitle(activeTask)}`,
       module: 'evoboard',
-      targetUid: 'all', 
+      targetUid: 'admin', 
       type: newStatus === 'Late Submit' ? 'warning' : 'success'
     });
     
@@ -637,6 +652,15 @@ const EvoBoard = () => {
       await updateDoc(doc(db, 'tasks', mobileDetail.id), {
         status: newStatus, assigneeNotes: mobileNotes, assigneeLink: mobileLink, submittedAt: Date.now()
       });
+      
+      sendNotification({
+        title: 'Task Submitted',
+        body: `${userData?.name || 'A user'} completed: ${getTaskDisplayTitle(mobileDetail)}`,
+        module: 'evoboard',
+        targetUid: 'admin', 
+        type: newStatus === 'Late Submit' ? 'warning' : 'success'
+      });
+      
       logActivity({ action: 'SUBMIT_TASK', module: 'evoboard', detail: `Submitted: ${getTaskDisplayTitle(mobileDetail)}` });
       setMobileDetail(null);
     };
@@ -686,7 +710,7 @@ const EvoBoard = () => {
         </div>
 
         {/* ── Task List ─────────────────────────────── */}
-        <div style={{ paddingBottom:120 }}>
+        <div style={{ paddingBottom:120, flex: 1, overflowY: 'auto' }}>
           {paginatedTasks.length === 0 ? (
             <div className="mob-empty">
               <div className="mob-empty__icon"><CheckSquare size={36} color="#8E8E93" /></div>
@@ -702,24 +726,81 @@ const EvoBoard = () => {
                   const isDone   = task.status === 'Done';
                   const isMissed = task.status === 'Missed' || task.status === 'Late Submit';
                   return (
-                    <div key={task.id} id={`task-row-${task.id}`} className={`mob-task-row ${blinkingTaskId === task.id ? 'blink-highlight' : ''}`} onClick={() => openDetail(task)}>
-                      {/* Circle indicator */}
-                      <div style={{
-                        width:20, height:20, borderRadius:10, flexShrink:0,
-                        border:`1.5px solid ${isDone?'#34C759':isMissed?'#FF3B30':'#C7C7CC'}`,
-                        background: isDone?'#34C759': isMissed?'rgba(255,59,48,0.12)':'transparent',
-                        display:'flex', alignItems:'center', justifyContent:'center',
+                    <div key={task.id} id={`task-row-${task.id}`} className={`mob-task-row ${blinkingTaskId === task.id ? 'blink-highlight' : ''} ${selectedTaskIds.includes(task.id) ? 'selected' : ''}`}
+                      onTouchStart={(e) => {
+                        const touch = e.touches[0];
+                        window.longPressStartX = touch.clientX;
+                        window.longPressStartY = touch.clientY;
+                        window.longPressTimer = setTimeout(() => {
+                          if (isAdmin) {
+                            if (!selectedTaskIds.includes(task.id)) {
+                              setSelectedTaskIds(prev => [...prev, task.id]);
+                            }
+                            if (window.navigator.vibrate) window.navigator.vibrate(50);
+                          }
+                        }, 500);
+                      }}
+                      onTouchMove={(e) => {
+                        const touch = e.touches[0];
+                        const dx = Math.abs(touch.clientX - window.longPressStartX);
+                        const dy = Math.abs(touch.clientY - window.longPressStartY);
+                        if (dx > 10 || dy > 10) {
+                          clearTimeout(window.longPressTimer);
+                        }
+                      }}
+                      onTouchEnd={() => clearTimeout(window.longPressTimer)}
+                      onClick={(e) => {
+                        if (selectedTaskIds.length > 0 && isAdmin) {
+                          e.preventDefault();
+                          if (selectedTaskIds.includes(task.id)) {
+                            setSelectedTaskIds(selectedTaskIds.filter(id => id !== task.id));
+                          } else {
+                            setSelectedTaskIds([...selectedTaskIds, task.id]);
+                          }
+                        } else {
+                          openDetail(task);
+                        }
                       }}>
-                        {isDone && <CheckCircle size={12} color="white" />}
-                        {isMissed && <AlertCircle size={11} color="#FF3B30" />}
-                      </div>
+                      {/* Selection Checkbox or Status Circle */}
+                      {selectedTaskIds.length > 0 && isAdmin ? (
+                        <input type="checkbox" checked={selectedTaskIds.includes(task.id)} readOnly
+                          style={{ width: 22, height: 22, flexShrink: 0, pointerEvents: 'none' }} />
+                      ) : (
+                        <div style={{
+                          width:20, height:20, borderRadius:10, flexShrink:0,
+                          border:`1.5px solid ${isDone?'#34C759':isMissed?'#FF3B30':'#C7C7CC'}`,
+                          background: isDone?'#34C759': isMissed?'rgba(255,59,48,0.12)':'transparent',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          {isDone && <CheckCircle size={12} color="white" />}
+                          {isMissed && <AlertCircle size={11} color="#FF3B30" />}
+                        </div>
+                      )}
 
                       <div className="mob-task-row__body">
                         <div className={`mob-task-row__name${isDone?' done':''}`}>{title}</div>
-                        <div className="mob-task-row__meta">
-                          {assignee && <span>{assignee.name.split(' ')[0]}</span>}
-                          {task.dueDate && !isDone && <span> Â· {task.dueDate}</span>}
-                          {task.priority && !isDone && <span style={{ color: task.priority==='High'?'#FF3B30':task.priority==='Medium'?'#FF9500':'#34C759' }}> Â· {task.priority}</span>}
+                        {task.clientId && <div className="mob-task-row__meta" style={{ color:'#007AFF', marginTop: '2px', fontSize: '11px', fontWeight: 600 }}>{getClientName(task)}</div>}
+                        <div className="mob-task-row__meta" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
+                          {assignee && <span onClick={(e) => { if(isAdmin) { e.stopPropagation(); setEditingField({ id: task.id, field: 'assigneeId', value: task.assigneeId || '' }); } }} style={{ padding: '2px 8px', borderRadius: '12px', background: '#E5E5EA', color: '#3C3C43', fontSize: '11px', fontWeight: 600 }}>{assignee.name.split(' ')[0]}</span>}
+                          {isAdmin && !isDone && (
+                            <button onClick={(e) => { 
+                              e.stopPropagation(); 
+                              if (!task.assigneeId) {
+                                window.alert('Task must be assigned to send a reminder.');
+                                return;
+                              }
+                              if (task.assigneeId === currentUser?.uid) {
+                                window.alert('You are assigned to this task.');
+                                return;
+                              }
+                              sendNotification({ title: 'Task Reminder', body: `Reminder for task: ${getTaskDisplayTitle(task)}`, module: 'evoboard', targetUid: task.assigneeId, type: 'reminder', reminderFor: task.id }); 
+                              window.alert('Reminder sent!'); 
+                            }} style={{ border: 'none', background: 'rgba(123, 31, 162, 0.08)', color: '#7b1fa2', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Clock size={10}/> Remind
+                            </button>
+                          )}
+                          {task.dueDate && !isDone && <span onClick={(e) => { if(isAdmin) { e.stopPropagation(); setEditingField({ id: task.id, field: 'dueDate', value: task.dueDate || '' }); } }} style={{ background: 'rgba(255,149,0,0.1)', color: '#FF9500', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>{task.dueDate}</span>}
+                          {task.priority && !isDone && <span onClick={(e) => { if(isAdmin) { e.stopPropagation(); setEditingField({ id: task.id, field: 'priority', value: task.priority || '' }); } }} style={{ background: task.priority==='High'?'rgba(255,59,48,0.1)':task.priority==='Medium'?'rgba(255,149,0,0.1)':'rgba(52,199,89,0.1)', color: task.priority==='High'?'#FF3B30':task.priority==='Medium'?'#FF9500':'#34C759', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>{task.priority}</span>}
                         </div>
                       </div>
 
@@ -734,14 +815,10 @@ const EvoBoard = () => {
                 })}
               </div>
 
-              {/* Pagination dots */}
-              {filteredAndSortedTasks.length > itemsPerPage && (
-                <div style={{ display:'flex', justifyContent:'center', gap:6, padding:'12px 0' }}>
-                  {Array.from({ length: Math.min(10, Math.ceil(filteredAndSortedTasks.length / itemsPerPage)) }, (_, i) => (
-                    <button key={i} onClick={() => setCurrentPage(i+1)}
-                      style={{ width: currentPage===i+1?24:8, height:8, borderRadius:4, border:'none', cursor:'pointer',
-                        background: currentPage===i+1?'#007AFF':'rgba(0,0,0,0.12)', transition:'all 0.2s' }} />
-                  ))}
+              {/* Mobile Pagination */}
+              {filteredAndSortedTasks.length > 0 && (
+                <div style={{ paddingTop: '16px' }}>
+                  <Pagination currentPage={currentPage} totalItems={filteredAndSortedTasks.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
                 </div>
               )}
             </>
@@ -750,11 +827,91 @@ const EvoBoard = () => {
 
         {/* Mobile modal moved to end of file to prevent duplicates */}
 
-        {/* ── Task Detail Bottom Sheet ────────────── */}
-        {mobileDetail && (
+        {/* ── Mobile Bulk Action Bar ────────────── */}
+        {selectedTaskIds.length > 0 && isAdmin && createPortal(
+          <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#fff', borderTop: '1px solid #E3E3E8', boxShadow: '0 -4px 12px rgba(0,0,0,0.08)', zIndex: 900, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px', paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, color: '#007AFF', fontSize: 15 }}>{selectedTaskIds.length} Tasks Selected</span>
+              <button onClick={() => setSelectedTaskIds([])} style={{ background: 'none', border: 'none', color: '#8E8E93', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>Cancel</button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: '4px' }}>
+              <select value={bulkAssignUser} onChange={e => setBulkAssignUser(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #E3E3E8', background: '#F2F2F7', fontSize: 14, outline: 'none', flexShrink: 0 }}>
+                <option value="">Assign To...</option>
+                <option value="UNASSIGN">Unassign</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <select value={bulkAssignPriority} onChange={e => setBulkAssignPriority(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #E3E3E8', background: '#F2F2F7', fontSize: 14, outline: 'none', flexShrink: 0 }}>
+                <option value="">Priority...</option>
+                <option value="High">🔴 High</option>
+                <option value="Medium">🟡 Medium</option>
+                <option value="Low">🟢 Low</option>
+              </select>
+              <select value={bulkAssignStatus} onChange={e => setBulkAssignStatus(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #E3E3E8', background: '#F2F2F7', fontSize: 14, outline: 'none', flexShrink: 0 }}>
+                <option value="">Status...</option>
+                <option value="To Do">To Do</option>
+                <option value="Pending">Pending</option>
+                <option value="Done">Done</option>
+              </select>
+              <input type="date" value={bulkAssignDueDate} onChange={e => setBulkAssignDueDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #E3E3E8', background: '#F2F2F7', fontSize: 14, outline: 'none', flexShrink: 0 }} />
+              <button onClick={async () => {
+                await handleBulkDelete();
+              }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #FF3B30', background: 'rgba(255,59,48,0.1)', color: '#FF3B30', fontSize: 14, fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
+            <button onClick={async () => {
+              await handleBulkAssign();
+            }} disabled={loading || (!bulkAssignUser && !bulkAssignPriority && !bulkAssignStatus && !bulkAssignDueDate)} style={{ background: '#007AFF', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 600, fontSize: 16, width: '100%', opacity: (loading || (!bulkAssignUser && !bulkAssignPriority && !bulkAssignStatus && !bulkAssignDueDate)) ? 0.5 : 1 }}>
+              Apply Changes
+            </button>
+          </div>,
+          document.body
+        )}
+
+        {/* ── Mobile Quick Edit Sheet ────────────── */}
+        {editingField.id && isMobile && createPortal(
           <>
-            <div className="mob-overlay" onClick={() => setMobileDetail(null)} />
-            <div className="mob-sheet">
+            <div className="mob-overlay" onClick={() => setEditingField({ id: null, field: null, value: '' })} style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1001, background: 'rgba(0,0,0,0.4)'}} />
+            <div className="mob-sheet" style={{position: 'fixed', bottom: 0, left: 0, width: '100%', zIndex: 1002, paddingBottom: 'calc(12px + env(safe-area-inset-bottom))', borderRadius: '20px 20px 0 0', maxHeight: '80dvh', overflowY: 'auto'}}>
+              <div className="mob-sheet__nav" style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
+                <button className="mob-sheet__cancel" onClick={() => setEditingField({ id: null, field: null, value: '' })}>Cancel</button>
+                <span className="mob-sheet__title">Quick Edit</span>
+                <button className="mob-sheet__confirm" onClick={handleInlineSave}>Save</button>
+              </div>
+              <div className="mob-sheet__body" style={{ padding: '16px' }}>
+                {editingField.field === 'priority' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {['High', 'Medium', 'Low', 'None'].map(p => (
+                      <button key={p} onClick={() => setEditingField({...editingField, value: p === 'None' ? '' : p})} style={{ padding: '14px', borderRadius: 12, border: '1px solid #E3E3E8', background: editingField.value === p || (p === 'None' && !editingField.value) ? '#007AFF' : '#F2F2F7', color: editingField.value === p || (p === 'None' && !editingField.value) ? 'white' : '#000', fontSize: 16, fontWeight: 500, cursor: 'pointer' }}>
+                        {p} Priority
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {editingField.field === 'dueDate' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <input type="date" value={editingField.value} onChange={e => setEditingField({...editingField, value: e.target.value})} style={{ padding: '16px', borderRadius: 12, border: '1px solid #E3E3E8', background: '#F2F2F7', fontSize: 18, outline: 'none' }} />
+                    <button onClick={() => setEditingField({...editingField, value: ''})} style={{ padding: '12px', color: '#FF3B30', background: 'rgba(255,59,48,0.1)', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>Clear Date</button>
+                  </div>
+                )}
+                {editingField.field === 'assigneeId' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <select value={editingField.value} onChange={e => setEditingField({...editingField, value: e.target.value})} style={{ padding: '16px', borderRadius: 12, border: '1px solid #E3E3E8', background: '#F2F2F7', fontSize: 16, outline: 'none' }}>
+                      <option value="">Unassigned</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>, document.body
+        )}
+
+        {/* ── Task Detail Bottom Sheet ────────────── */}
+        {mobileDetail && createPortal(
+          <>
+            <div className="mob-overlay" onClick={() => setMobileDetail(null)} style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 999}} />
+            <div className="mob-sheet" style={{position: 'fixed', bottom: 0, left: 0, width: '100%', zIndex: 1000, maxHeight: '90dvh', overflowY: 'auto'}}>
               <div className="mob-sheet__nav">
                 <button className="mob-sheet__cancel" onClick={() => setMobileDetail(null)}>Cancel</button>
                 <span className="mob-sheet__title">Task Detail</span>
@@ -772,13 +929,36 @@ const EvoBoard = () => {
                       <span className="mob-pill mob-pill--orange">Due: {mobileDetail.dueDate}</span>
                     )}
                   </div>
-                  <h2 style={{ margin:'0 0 4px', fontSize:22, fontWeight:700, color:'#000', letterSpacing:'-0.02em', lineHeight:1.2 }}>
-                    {getTaskDisplayTitle(mobileDetail)}
-                  </h2>
-                  <p style={{ margin:'0 0 12px', fontSize:14, color:'#8E8E93' }}>
-                    {getClientName(mobileDetail)}
-                    {getAssignee(mobileDetail) ? ` Â· ${getAssignee(mobileDetail).name}` : ''}
-                  </p>
+                  {isAdmin ? (
+                    <input 
+                      value={mobileDetail.customName ?? mobileDetail.taskName ?? getTaskDisplayTitle(mobileDetail)}
+                      onChange={e => setMobileDetail({...mobileDetail, customName: e.target.value})}
+                      onBlur={async e => {
+                        const val = e.target.value.trim();
+                        if (val) {
+                          if (mobileDetail.type === 'service_task' || mobileDetail.type === 'workflow_task') {
+                            await updateDoc(doc(db, 'tasks', mobileDetail.id), { customName: val });
+                          } else {
+                            await updateDoc(doc(db, 'tasks', mobileDetail.id), { taskName: val });
+                          }
+                        }
+                      }}
+                      style={{ margin:'0 0 4px', fontSize:22, fontWeight:700, color:'#000', letterSpacing:'-0.02em', lineHeight:1.2, width: '100%', border: 'none', background: 'transparent', outline: 'none', padding: 0 }}
+                      placeholder="Task Name"
+                    />
+                  ) : (
+                    <h2 style={{ margin:'0 0 4px', fontSize:22, fontWeight:700, color:'#000', letterSpacing:'-0.02em', lineHeight:1.2 }}>
+                      {getTaskDisplayTitle(mobileDetail)}
+                    </h2>
+                  )}
+                  <div style={{ margin:'0 0 12px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    {mobileDetail.clientId && (
+                      <span style={{ color: '#007AFF', fontSize: 13, fontWeight: 600 }}>{getClientName(mobileDetail)}</span>
+                    )}
+                    {getAssignee(mobileDetail) && (
+                      <span style={{ fontSize: 13, color: '#8E8E93' }}>• {getAssignee(mobileDetail).name}</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Description */}
@@ -789,6 +969,56 @@ const EvoBoard = () => {
                       <div style={{ padding:'14px 16px', fontSize:15, lineHeight:1.5, color:'#000' }}>
                         {mobileDetail.description}
                       </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Mobile Checklist */}
+                {(mobileDetail.checklist?.length > 0 || isAdmin || mobileDetail.assigneeId === currentUser?.uid) && (
+                  <>
+                    <p className="mob-sec-hdr" style={{ paddingTop: mobileDetail.description ? 12 : 0 }}>Checklist</p>
+                    <div className="mob-group" style={{ marginBottom: 0 }}>
+                      {(mobileDetail.checklist || []).map((item, idx) => (
+                        <div key={idx} className="mob-form-row" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <input type="checkbox" checked={item.isDone} onChange={async () => {
+                            const newChecklist = [...(mobileDetail.checklist || [])];
+                            newChecklist[idx].isDone = !newChecklist[idx].isDone;
+                            await updateDoc(doc(db, 'tasks', mobileDetail.id), { checklist: newChecklist });
+                            setMobileDetail({...mobileDetail, checklist: newChecklist});
+                          }} style={{ width: 22, height: 22, cursor: 'pointer' }} />
+                          <span style={{ flex: 1, fontSize: 16, color: item.isDone ? '#8E8E93' : '#000', textDecoration: item.isDone ? 'line-through' : 'none' }}>
+                            {item.text}
+                          </span>
+                          {isAdmin && (
+                            <button onClick={async () => {
+                              const newChecklist = mobileDetail.checklist.filter((_, i) => i !== idx);
+                              await updateDoc(doc(db, 'tasks', mobileDetail.id), { checklist: newChecklist });
+                              setMobileDetail({...mobileDetail, checklist: newChecklist});
+                            }} style={{ background: 'none', border: 'none', color: '#FF3B30', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <X size={18} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {(isAdmin || mobileDetail.assigneeId === currentUser?.uid) && (
+                        <div className="mob-form-row" style={{ padding: '8px 16px', borderBottom: 'none', display: 'flex', gap: '8px' }}>
+                          <input type="text" placeholder="Add checklist item..." value={taskChecklistForm} onChange={e => setTaskChecklistForm(e.target.value)} onKeyDown={async e => {
+                            if (e.key === 'Enter' && taskChecklistForm.trim()) {
+                              const newChecklist = [...(mobileDetail.checklist || []), { text: taskChecklistForm, isDone: false }];
+                              await updateDoc(doc(db, 'tasks', mobileDetail.id), { checklist: newChecklist });
+                              setMobileDetail({...mobileDetail, checklist: newChecklist});
+                              setTaskChecklistForm('');
+                            }
+                          }} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 16 }} />
+                          <button onClick={async () => {
+                            if (!taskChecklistForm.trim()) return;
+                            const newChecklist = [...(mobileDetail.checklist || []), { text: taskChecklistForm, isDone: false }];
+                            await updateDoc(doc(db, 'tasks', mobileDetail.id), { checklist: newChecklist });
+                            setMobileDetail({...mobileDetail, checklist: newChecklist});
+                            setTaskChecklistForm('');
+                          }} style={{ background: '#007AFF', color: 'white', border: 'none', borderRadius: 8, padding: '6px 12px', fontWeight: 600, fontSize: 14 }}>Add</button>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -835,11 +1065,19 @@ const EvoBoard = () => {
                 )}
 
                 {/* Admin Reminder */}
-                {isAdmin && mobileDetail.assigneeId && mobileDetail.assigneeId !== currentUser?.uid && mobileDetail.status !== 'Done' && (
+                {isAdmin && mobileDetail.status !== 'Done' && (
                   <>
                     <p className="mob-sec-hdr" style={{ paddingTop: 16 }}>Actions</p>
                     <div className="mob-form-group" style={{ marginBottom:0, overflow: 'hidden' }}>
                       <button className="mob-btn" style={{ background: '#f3e5f5', color: '#7b1fa2', borderRadius: '0' }} onClick={() => {
+                        if (!mobileDetail.assigneeId) {
+                           window.alert('Task must be assigned to send a reminder.');
+                           return;
+                        }
+                        if (mobileDetail.assigneeId === currentUser?.uid) {
+                           window.alert('You are assigned to this task.');
+                           return;
+                        }
                          sendNotification({
                            title: 'Task Reminder',
                            body: `Reminder for task: ${getTaskDisplayTitle(mobileDetail)}`,
@@ -848,6 +1086,7 @@ const EvoBoard = () => {
                            type: 'reminder',
                            reminderFor: mobileDetail.id
                          });
+                         window.alert('Reminder sent successfully!');
                          setMobileDetail(null);
                       }}>
                         <Clock size={20} /> Send Reminder
@@ -860,7 +1099,7 @@ const EvoBoard = () => {
               </div>
 
               {/* Sheet Footer */}
-              <div className="mob-sheet__footer">
+              <div className="mob-sheet__footer" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #E3E3E8', zIndex: 10 }}>
                 {mobileDetail.status !== 'Done' && mobileDetail.status !== 'Missed' && mobileDetail.assigneeId === currentUser?.uid ? (
                   <button className="mob-btn mob-btn--green" onClick={handleMobileSubmit}>
                     <CheckCircle size={20} /> Submit Task
@@ -872,14 +1111,15 @@ const EvoBoard = () => {
                 )}
               </div>
             </div>
-          </>
+          </>,
+          document.body
         )}
 
         {/* ── Create Task Bottom Sheet (Admin) ─────── */}
-        {isAdmin && mobileCreateOpen && (
+        {isAdmin && mobileCreateOpen && createPortal(
           <>
-            <div className="mob-overlay" onClick={() => setMobileCreateOpen(false)} />
-            <div className="mob-sheet">
+            <div className="mob-overlay" onClick={() => setMobileCreateOpen(false)} style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 999}} />
+            <div className="mob-sheet" style={{position: 'fixed', bottom: 0, left: 0, width: '100%', zIndex: 1000, maxHeight: '90dvh', overflowY: 'auto'}}>
               <div className="mob-sheet__nav">
                 <button className="mob-sheet__cancel" onClick={() => setMobileCreateOpen(false)}>Cancel</button>
                 <span className="mob-sheet__title">New Task</span>
@@ -927,7 +1167,7 @@ const EvoBoard = () => {
                 </div>
                 <div className="mob-spacer-lg" />
               </div>
-              <div className="mob-sheet__footer">
+              <div className="mob-sheet__footer" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #E3E3E8', zIndex: 10 }}>
                 <button className="mob-btn mob-btn--blue"
                   disabled={!newTaskForm.taskName}
                   onClick={async e => { await handleCreateTask(e); setMobileCreateOpen(false); }}>
@@ -935,8 +1175,65 @@ const EvoBoard = () => {
                 </button>
               </div>
             </div>
-          </>
+          </>,
+          document.body
         )}
+
+        {/* ── Mobile Menu & Filters Bottom Sheet ───────────── */}
+        {isMobileFilterOpen && createPortal(
+          <>
+            <div className="mob-overlay" onClick={() => setIsMobileFilterOpen(false)} style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9998}} />
+            <div className="mob-sheet" style={{position: 'fixed', bottom: 0, left: 0, width: '100%', height: '90vh', zIndex: 9999}}>
+              <div className="mob-sheet__nav">
+                <button className="mob-sheet__cancel" onClick={() => {
+                  setFilterClient(''); setFilterUser(''); setFilterPriority('');
+                }}>Clear</button>
+                <span className="mob-sheet__title">Menu & Filters</span>
+                <button className="mob-sheet__confirm" onClick={() => setIsMobileFilterOpen(false)}>Done</button>
+              </div>
+              <div className="mob-sheet__body" style={{ padding: '16px', paddingBottom: '300px' }}>
+                
+                <p className="mob-sec-hdr" style={{ paddingTop: 0 }}>Views</p>
+                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '16px', scrollbarWidth: 'none' }}>
+                  <button onClick={() => { setActiveEngineTab('Tasks'); setIsMobileFilterOpen(false); }} style={{ padding: '10px 20px', borderRadius: '12px', border: 'none', background: activeEngineTab === 'Tasks' ? '#007AFF' : '#E3E3E8', color: activeEngineTab === 'Tasks' ? 'white' : '#3C3C43', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><ListTodo size={16}/> Tasks</button>
+                  <button onClick={() => { setActiveEngineTab('Team Status'); setIsMobileFilterOpen(false); }} style={{ padding: '10px 20px', borderRadius: '12px', border: 'none', background: activeEngineTab === 'Team Status' ? '#007AFF' : '#E3E3E8', color: activeEngineTab === 'Team Status' ? 'white' : '#3C3C43', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><UsersIcon size={16}/> Team Status</button>
+                  <button onClick={() => { setActiveEngineTab('Client Services'); setIsMobileFilterOpen(false); }} style={{ padding: '10px 20px', borderRadius: '12px', border: 'none', background: activeEngineTab === 'Client Services' ? '#007AFF' : '#E3E3E8', color: activeEngineTab === 'Client Services' ? 'white' : '#3C3C43', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Briefcase size={16}/> Services</button>
+                </div>
+
+                <p className="mob-sec-hdr">Filters</p>
+                <div className="mob-form-group">
+                  <div className="mob-form-row">
+                    <span className="mob-form-label">Client</span>
+                    <select className="mob-form-select" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
+                      <option value="">All Clients</option>
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="mob-form-row">
+                    <span className="mob-form-label">Assignee</span>
+                    <select className="mob-form-select" value={filterUser} onChange={e => setFilterUser(e.target.value)}>
+                      <option value="">All Assignees</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="mob-form-row" style={{ borderBottom: 'none' }}>
+                    <span className="mob-form-label">Priority</span>
+                    <select className="mob-form-select" value={filterPriority} onChange={e => setFilterPriority(e.target.value)}>
+                      <option value="">All Priorities</option>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+
+
       </div>
     );
   }
@@ -945,21 +1242,23 @@ const EvoBoard = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* HEADER & VIEW TOGGLE */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '26px', fontWeight: 800, margin: 0, color: 'var(--color-ocean-blue)', letterSpacing: '-0.5px' }}>EvoBoard Engine</h2>
-          <p style={{ color: 'var(--text-secondary)', margin: '4px 0 0 0', fontSize: '14px' }}>Advanced Task & Team Operations Center.</p>
+      {/* HEADER & VIEW TOGGLE (Desktop Only) */}
+      {!isMobile && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontSize: '26px', fontWeight: 800, margin: 0, color: 'var(--color-ocean-blue)', letterSpacing: '-0.5px' }}>EvoBoard Engine</h2>
+            <p style={{ color: 'var(--text-secondary)', margin: '4px 0 0 0', fontSize: '14px' }}>Advanced Task & Team Operations Center.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+             <div style={{ display: 'flex', background: 'var(--bg-matte)', borderRadius: '12px', padding: '4px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                <button onClick={() => setActiveEngineTab('Tasks')} style={{ background: activeEngineTab === 'Tasks' ? 'white' : 'transparent', color: activeEngineTab === 'Tasks' ? 'var(--color-ocean-blue)' : 'var(--text-secondary)', border: 'none', padding: '8px 20px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, boxShadow: activeEngineTab === 'Tasks' ? '0 2px 8px rgba(0,102,204,0.15)' : 'none', transition: 'all 0.2s' }}><ListTodo size={16}/> Tasks</button>
+                <button onClick={() => setActiveEngineTab('Team Status')} style={{ background: activeEngineTab === 'Team Status' ? 'white' : 'transparent', color: activeEngineTab === 'Team Status' ? 'var(--color-ocean-blue)' : 'var(--text-secondary)', border: 'none', padding: '8px 20px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, boxShadow: activeEngineTab === 'Team Status' ? '0 2px 8px rgba(0,102,204,0.15)' : 'none', transition: 'all 0.2s' }}><UsersIcon size={16}/> Team Status</button>
+                <button onClick={() => setActiveEngineTab('Client Services')} style={{ background: activeEngineTab === 'Client Services' ? 'white' : 'transparent', color: activeEngineTab === 'Client Services' ? 'var(--color-ocean-blue)' : 'var(--text-secondary)', border: 'none', padding: '8px 20px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, boxShadow: activeEngineTab === 'Client Services' ? '0 2px 8px rgba(0,102,204,0.15)' : 'none', transition: 'all 0.2s' }}><Briefcase size={16}/> Services</button>
+             </div>
+             <button onClick={() => { setNewTaskForm({ taskName: '', assigneeId: '', priority: '', dueDate: '', clientId: '' }); setIsCreateTaskModalOpen(true); }} style={{ background: 'var(--color-ocean-blue)', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(0,102,204,0.3)', transition: 'transform 0.1s' }} onMouseDown={e=>e.currentTarget.style.transform='scale(0.95)'} onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}><Plus size={18}/> Create Task</button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-           <div style={{ display: 'flex', background: 'var(--bg-matte)', borderRadius: '12px', padding: '4px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
-              <button onClick={() => setActiveEngineTab('Tasks')} style={{ background: activeEngineTab === 'Tasks' ? 'white' : 'transparent', color: activeEngineTab === 'Tasks' ? 'var(--color-ocean-blue)' : 'var(--text-secondary)', border: 'none', padding: '8px 20px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, boxShadow: activeEngineTab === 'Tasks' ? '0 2px 8px rgba(0,102,204,0.15)' : 'none', transition: 'all 0.2s' }}><ListTodo size={16}/> Tasks</button>
-              <button onClick={() => setActiveEngineTab('Team Status')} style={{ background: activeEngineTab === 'Team Status' ? 'white' : 'transparent', color: activeEngineTab === 'Team Status' ? 'var(--color-ocean-blue)' : 'var(--text-secondary)', border: 'none', padding: '8px 20px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, boxShadow: activeEngineTab === 'Team Status' ? '0 2px 8px rgba(0,102,204,0.15)' : 'none', transition: 'all 0.2s' }}><UsersIcon size={16}/> Team Status</button>
-              <button onClick={() => setActiveEngineTab('Client Services')} style={{ background: activeEngineTab === 'Client Services' ? 'white' : 'transparent', color: activeEngineTab === 'Client Services' ? 'var(--color-ocean-blue)' : 'var(--text-secondary)', border: 'none', padding: '8px 20px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, boxShadow: activeEngineTab === 'Client Services' ? '0 2px 8px rgba(0,102,204,0.15)' : 'none', transition: 'all 0.2s' }}><Briefcase size={16}/> Services</button>
-           </div>
-           <button onClick={() => { setNewTaskForm({ taskName: '', assigneeId: '', priority: '', dueDate: '', clientId: '' }); setIsCreateTaskModalOpen(true); }} style={{ background: 'var(--color-ocean-blue)', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(0,102,204,0.3)', transition: 'transform 0.1s' }} onMouseDown={e=>e.currentTarget.style.transform='scale(0.95)'} onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}><Plus size={18}/> Create Task</button>
-        </div>
-      </div>
+      )}
 
       {activeEngineTab === 'Tasks' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1192,6 +1491,9 @@ const EvoBoard = () => {
             {isMobile ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 4px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'white', borderRadius: '12px', marginBottom: '4px' }}>
+                  <button onClick={() => setActiveEngineTab('Tasks')} style={{ background: 'transparent', border: 'none', color: '#007AFF', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}>
+                    <ChevronLeft size={20} /> Tasks
+                  </button>
                   <span style={{ fontWeight: 700, fontSize: '15px' }}>Team Status</span>
                   <button onClick={() => setIsMobileFilterOpen(true)} style={{ width: 36, height: 36, borderRadius: 18, background: '#E3E3E8', color: '#3C3C43', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Menu size={16}/></button>
                 </div>
@@ -1303,6 +1605,9 @@ const EvoBoard = () => {
             {isMobile ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 4px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'white', borderRadius: '12px', marginBottom: '4px' }}>
+                  <button onClick={() => setActiveEngineTab('Tasks')} style={{ background: 'transparent', border: 'none', color: '#007AFF', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: 0 }}>
+                    <ChevronLeft size={20} /> Tasks
+                  </button>
                   <span style={{ fontWeight: 700, fontSize: '15px' }}>Client Services</span>
                   <button onClick={() => setIsMobileFilterOpen(true)} style={{ width: 36, height: 36, borderRadius: 18, background: '#E3E3E8', color: '#3C3C43', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Menu size={16}/></button>
                 </div>
@@ -1585,58 +1890,8 @@ const EvoBoard = () => {
         </div>
       )}
 
-      {/* ── Mobile Menu & Filters Bottom Sheet (Desktop block fallback) ───────────── */}
-      {isMobileFilterOpen && (
-        <>
-          <div className="mob-overlay" onClick={() => setIsMobileFilterOpen(false)} style={{zIndex: 9998}} />
-          <div className="mob-sheet" style={{ height: '90vh', zIndex: 9999 }}>
-            <div className="mob-sheet__nav">
-              <button className="mob-sheet__cancel" onClick={() => {
-                setFilterClient(''); setFilterUser(''); setFilterPriority('');
-              }}>Clear</button>
-              <span className="mob-sheet__title">Menu & Filters</span>
-              <button className="mob-sheet__confirm" onClick={() => setIsMobileFilterOpen(false)}>Done</button>
-            </div>
-            <div className="mob-sheet__body" style={{ padding: '16px', paddingBottom: '300px' }}>
-              
-              <p className="mob-sec-hdr" style={{ paddingTop: 0 }}>Views</p>
-              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '16px', scrollbarWidth: 'none' }}>
-                <button onClick={() => { setActiveEngineTab('Tasks'); setIsMobileFilterOpen(false); }} style={{ padding: '10px 20px', borderRadius: '12px', border: 'none', background: activeEngineTab === 'Tasks' ? '#007AFF' : '#E3E3E8', color: activeEngineTab === 'Tasks' ? 'white' : '#3C3C43', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><ListTodo size={16}/> Tasks</button>
-                <button onClick={() => { setActiveEngineTab('Team Status'); setIsMobileFilterOpen(false); }} style={{ padding: '10px 20px', borderRadius: '12px', border: 'none', background: activeEngineTab === 'Team Status' ? '#007AFF' : '#E3E3E8', color: activeEngineTab === 'Team Status' ? 'white' : '#3C3C43', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><UsersIcon size={16}/> Team Status</button>
-                <button onClick={() => { setActiveEngineTab('Client Services'); setIsMobileFilterOpen(false); }} style={{ padding: '10px 20px', borderRadius: '12px', border: 'none', background: activeEngineTab === 'Client Services' ? '#007AFF' : '#E3E3E8', color: activeEngineTab === 'Client Services' ? 'white' : '#3C3C43', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><Briefcase size={16}/> Services</button>
-              </div>
 
-              <p className="mob-sec-hdr">Filters</p>
-              <div className="mob-form-group">
-                <div className="mob-form-row">
-                  <span className="mob-form-label">Client</span>
-                  <select className="mob-form-select" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
-                    <option value="">All Clients</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="mob-form-row">
-                  <span className="mob-form-label">Assignee</span>
-                  <select className="mob-form-select" value={filterUser} onChange={e => setFilterUser(e.target.value)}>
-                    <option value="">All Assignees</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-                <div className="mob-form-row" style={{ borderBottom: 'none' }}>
-                  <span className="mob-form-label">Priority</span>
-                  <select className="mob-form-select" value={filterPriority} onChange={e => setFilterPriority(e.target.value)}>
-                    <option value="">All Priorities</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                </div>
-              </div>
 
-            </div>
-          </div>
-        </>
-      )}
 
     </div>
   );

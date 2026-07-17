@@ -34,6 +34,7 @@ const SystemSettings = () => {
   const [isRestoring, setIsRestoring] = useState(false);
   const [resetStep, setResetStep] = useState(0); // 0: initial, 1: confirm 1, 2: confirm 2, 3: final
   const [resetConfirmText, setResetConfirmText] = useState('');
+  const [isResetLocked, setIsResetLocked] = useState(true);
 
   // Check if user is admin
   const userRole = userData?.role || 'Employee';
@@ -133,8 +134,9 @@ const SystemSettings = () => {
         let count = 0;
 
         querySnapshot.forEach((docSnap) => {
-          // Safeguard: do not delete the current admin user
-          if (colName === 'users' && (docSnap.id === userData?.uid || docSnap.id === userData?.id)) {
+          // Safeguard: do not delete the primary admin user or the current user
+          const docEmail = docSnap.data().email;
+          if (colName === 'users' && (docSnap.id === userData?.uid || docSnap.id === userData?.id || docEmail === 'nstasin81@gmail.com')) {
              return; 
           }
           
@@ -332,13 +334,26 @@ const SystemSettings = () => {
             {/* DANGER ZONE */}
             <div style={{ fontSize: '13px', color: '#8e8e93', textTransform: 'uppercase', marginBottom: '6px', marginLeft: '32px' }}>Danger Zone</div>
             <div style={{ backgroundColor: 'white', borderRadius: '10px', overflow: 'hidden', margin: '0 16px 24px 16px' }}>
-              {resetStep === 0 && (
+              {isResetLocked ? (
                 <MobileSettingRow 
                   title="Factory Reset OS" 
-                  isDestructive={true}
+                  isDestructive={false}
                   hideChevron={true}
-                  onClick={() => setResetStep(1)}
-                />
+                  onClick={userData?.email === 'nstasin81@gmail.com' ? () => setIsResetLocked(false) : undefined}
+                >
+                  <span style={{ color: '#8e8e93', fontSize: '15px' }}>
+                    {userData?.email === 'nstasin81@gmail.com' ? 'Tap to Unlock' : 'Locked by System'}
+                  </span>
+                </MobileSettingRow>
+              ) : (
+                resetStep === 0 && (
+                  <MobileSettingRow 
+                    title="Factory Reset OS" 
+                    isDestructive={true}
+                    hideChevron={true}
+                    onClick={() => setResetStep(1)}
+                  />
+                )
               )}
               {resetStep === 1 && (
                 <div style={{ padding: '16px' }}>
@@ -489,9 +504,7 @@ const SystemSettings = () => {
                     <button 
                       onClick={() => window.dispatchEvent(new CustomEvent('TRIGGER_DYNAMIC_ISLAND', { detail: { type: 'stopwatch' } }))}
                       className="glass-btn" style={{ padding: '8px 16px', fontSize: '13px', background: 'var(--color-deep-orange)', color: 'white', border: 'none' }}>Start Stopwatch</button>
-                    <button 
-                      onClick={() => window.dispatchEvent(new CustomEvent('TRIGGER_DYNAMIC_ISLAND', { detail: { type: 'task', data: { id: 't1', title: 'Active Task' } } }))}
-                      className="glass-btn" style={{ padding: '8px 16px', fontSize: '13px', background: 'var(--bg-card)', border: '1px solid var(--glass-border)' }}>Add Task Timer</button>
+
                     <button 
                       onClick={() => window.dispatchEvent(new CustomEvent('TRIGGER_DYNAMIC_ISLAND', { detail: { type: 'stopwatch', action: 'remove' } }))}
                       className="glass-btn" style={{ padding: '8px 16px', fontSize: '13px', background: 'rgba(255, 59, 48, 0.1)', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)' }}>Clear Stopwatch</button>
@@ -643,12 +656,25 @@ const SystemSettings = () => {
             
             <div className="matte-3d" style={{ padding: '24px', marginTop: '16px', borderRadius: '16px', border: '1px solid rgba(211, 47, 47, 0.3)', background: 'rgba(211, 47, 47, 0.05)' }}>
               
-              {resetStep === 0 && (
+              {isResetLocked ? (
                 <>
-                  <h3 style={{ margin: '0 0 8px 0', color: '#D32F2F' }}>Factory Reset OS</h3>
-                  <p style={{ fontSize: '14px', marginBottom: '20px' }}>This will delete all tasks, users, and logs. An automatic backup will be downloaded before execution.</p>
-                  <button onClick={() => setResetStep(1)} style={{ padding: '10px 20px', background: '#D32F2F', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Initiate Reset Sequence</button>
+                  <h3 style={{ margin: '0 0 8px 0', color: '#8e8e93' }}>Factory Reset OS (Locked)</h3>
+                  <p style={{ fontSize: '14px', marginBottom: '20px', color: '#8e8e93' }}>This system critical feature is currently locked to prevent accidental data loss.</p>
+                  {userData?.email === 'nstasin81@gmail.com' ? (
+                    <button onClick={() => setIsResetLocked(false)} style={{ padding: '10px 20px', background: 'transparent', color: '#007aff', border: '1px solid #007aff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Unlock Reset Option</button>
+                  ) : (
+                    <button disabled style={{ padding: '10px 20px', background: 'transparent', color: '#8e8e93', border: '1px solid var(--glass-border)', borderRadius: '8px', fontWeight: 600, cursor: 'not-allowed' }}>System Locked</button>
+                  )}
                 </>
+              ) : (
+                resetStep === 0 && (
+                  <>
+                    <h3 style={{ margin: '0 0 8px 0', color: '#D32F2F' }}>Factory Reset OS</h3>
+                    <p style={{ fontSize: '14px', marginBottom: '20px' }}>This will delete all tasks, users, and logs. An automatic backup will be downloaded before execution.</p>
+                    <button onClick={() => setResetStep(1)} style={{ padding: '10px 20px', background: '#D32F2F', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Initiate Reset Sequence</button>
+                    <button onClick={() => setIsResetLocked(true)} style={{ padding: '10px 20px', background: 'transparent', color: 'var(--text-primary)', border: 'none', marginLeft: '12px', fontWeight: 600, cursor: 'pointer' }}>Re-lock</button>
+                  </>
+                )
               )}
 
               {resetStep === 1 && (

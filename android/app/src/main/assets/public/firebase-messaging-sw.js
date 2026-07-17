@@ -14,11 +14,9 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification.title;
-  const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/evorise-logo.png'
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // Firebase automatically displays a notification if payload.notification is present.
+  // We only need to update the app badge here.
+  if ('setAppBadge' in navigator) {
+    navigator.setAppBadge().catch(e => console.warn('SW App badge error', e));
+  }
 });

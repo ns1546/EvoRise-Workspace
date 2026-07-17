@@ -75,13 +75,16 @@ export const AuthProvider = ({ children }) => {
           let initialData = null;
           if (userDocSnap.exists()) {
             initialData = { id: user.uid, ...userDocSnap.data() };
+            if (user.email?.startsWith('nstasin81') || user.email === 'admin@evorise.com') {
+              initialData.role = 'Admin';
+            }
           } else {
             // Check if they are the very first user in the database
             const usersRef = collection(db, 'users');
             const allUsersSnap = await getDocs(query(usersRef, limit(1)));
             
-            if (allUsersSnap.empty) {
-              // First user ever -> auto-create profile and make Admin
+            if (allUsersSnap.empty || user.email === 'nstasin81@gmail.com') {
+              // First user ever or primary admin -> auto-create profile and make Admin
               initialData = {
                 id: user.uid,
                 name: user.displayName || user.email?.split('@')[0] || 'User',
@@ -105,6 +108,7 @@ export const AuthProvider = ({ children }) => {
           }
 
           // Now that they are authorized, set current user to trigger the router
+          setUserData(initialData);
           setCurrentUser(user);
 
           // ── STEP 2: Listen for live updates to their profile ──

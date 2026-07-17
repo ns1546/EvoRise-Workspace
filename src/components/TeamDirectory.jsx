@@ -122,7 +122,7 @@ const TeamDirectory = () => {
           title: 'New Team Member',
           body: `${formData.name} has joined the workspace as a ${formData.role}.`,
           module: 'team',
-          targetUid: 'all',
+          targetUid: 'admin',
           type: 'info'
         });
         
@@ -139,6 +139,11 @@ const TeamDirectory = () => {
 
   const handleDelete = async () => {
     if (!userToDelete) return;
+    if (userToDelete.email === 'nstasin81@gmail.com') {
+      alert("Action Denied: You cannot delete the primary administrator.");
+      setUserToDelete(null);
+      return;
+    }
     setIsDeletingUser(true);
     try {
       await safeDelete('users', userToDelete.id, userData);
@@ -334,10 +339,12 @@ const TeamDirectory = () => {
                   onClick={async () => { await handleToggleStatus(mobileSelected); setMobileSelected(null); }}>
                   {mobileSelected.status !== 'Resigned' ? <><UserX size={16} style={{marginRight:6, position:'relative', top:3}}/> Mark Resigned</> : <><Plus size={16} style={{marginRight:6, position:'relative', top:3}}/> Resume Access</>}
                 </button>
-                <button className="mob-btn mob-btn--red"
-                  onClick={() => { setUserToDelete(mobileSelected); setMobileSelected(null); }}>
-                  <Trash2 size={16} style={{marginRight:6, position:'relative', top:3}}/> Delete Profile
-                </button>
+                {mobileSelected.email !== 'nstasin81@gmail.com' && (
+                  <button className="mob-btn mob-btn--red"
+                    onClick={() => { setUserToDelete(mobileSelected); setMobileSelected(null); }}>
+                    <Trash2 size={16} style={{marginRight:6, position:'relative', top:3}}/> Delete Profile
+                  </button>
+                )}
               </div>
             </div>
           </>
@@ -504,7 +511,9 @@ const TeamDirectory = () => {
                             <button onClick={() => handleToggleStatus(member)} title="Resume Employee (Restore Access)" style={{ padding: '6px', border: 'none', background: 'rgba(52,211,153,0.1)', color: '#10b981', borderRadius: '6px', cursor: 'pointer' }}><Plus size={14} /></button>
                           )}
                           
-                          <button onClick={() => setUserToDelete(member)} title="Delete Profile" style={{ padding: '6px', border: 'none', background: 'rgba(244,67,54,0.1)', color: '#F44336', borderRadius: '6px', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                          {member.email !== 'nstasin81@gmail.com' && (
+                            <button onClick={() => setUserToDelete(member)} title="Delete Profile" style={{ padding: '6px', border: 'none', background: 'rgba(244,67,54,0.1)', color: '#F44336', borderRadius: '6px', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                          )}
                         </div>
                       </td>
                     )}

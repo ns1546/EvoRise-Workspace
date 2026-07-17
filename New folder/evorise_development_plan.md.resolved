@@ -1,0 +1,178 @@
+# Evorise Workspace: Master Architecture & Development Plan
+
+This document outlines the systematic, phase-by-phase development strategy for the Evorise Workspace. The goal is to build a highly professional, interconnected, "Operating System" style web application for agency management. Every function will be built fully operational, with no "dummy" features, ensuring maximum performance, security, and a premium user experience.
+
+---
+
+## Phase 1: Foundation, Security & Architecture (Core System)
+**Goal:** Establish the rock-solid backbone of the application. If this foundation is strong, heavy data loads (notifications, large task lists) will not crash the system.
+
+### 1.1 Authentication & Location System
+*   **Working Process:** Users log in using Email/Password, Google Auth, or Fingerprint (WebAuthn). Upon login, the system mandates location access. If denied, the system locks and cannot be used. The real-time location is saved to their session log.
+*   **Creating Process:** 
+    *   Integrate Firebase/Supabase Auth.
+    *   Utilize the HTML5 Geolocation API on the login route. 
+    *   Create an `AuthContext` to manage the session globally. 
+    *   Build a "System Lock" UI overlay that triggers dynamically if location permissions are revoked.
+
+### 1.2 Master Layout & Routing
+*   **Working Process:** A professional, responsive layout with a Sidebar (navigation), Topbar (search, notifications, profile), and the Main Content Area. Smooth transitions between pages without full reloads. Data addition optionally opens in new tabs/pages to avoid clutter.
+*   **Creating Process:** 
+    *   Implement React Router DOM with nested routes.
+    *   Build dynamic layout wrappers based on User Roles.
+
+### 1.3 System Settings, Backup & Auto-Lock
+*   **Working Process:** A mobile-like settings panel. Auto-locks the screen after inactivity. A 3-step verification system reset. Automatic database backup before crashes or manual backup/restore via JSON upload.
+*   **Creating Process:** 
+    *   Use `IdleTimer` hooks to detect mouse/keyboard inactivity.
+    *   Build Cloud Functions to compile all Firestore collections into a single downloadable JSON file.
+    *   Build a parser to read uploaded JSON and batch-write to the database for restore. Error logs are saved to a specific `error_logs` collection.
+
+---
+
+## Phase 2: User, Roles & Employee Database
+**Goal:** Setup the people who will use the system and control exactly what they can see and do.
+
+### 2.1 Employee Database & Profiles
+*   **Working Process:** Admin adds users, sets passwords, and inputs details (joining date, contact). Users can later edit their own profile pictures and passwords. Admin retains full edit control, plus options to mark users as "Resigned" or delete profiles.
+*   **Creating Process:** 
+    *   Create a `users` database collection.
+    *   Build user profile interfaces with image upload (Firebase Storage).
+
+### 2.2 Role-Based Access Control (RBAC) & Permissions
+*   **Working Process:** Users are assigned roles (Admin, Partner, Employee, Client). Every function, button, and page checks this role before displaying. Admin can dynamically toggle specific permissions for specific users.
+*   **Creating Process:** 
+    *   Implement a robust Permissions Engine (e.g., `user.permissions.canEditTask = true`).
+    *   Wrap UI components in an `<AccessControl>` component that reads the current role.
+
+### 2.3 Undo Request & Action Moderation
+*   **Working Process:** If an employee deletes or modifies a critical task, it doesn't happen instantly. It sends an "Undo Request" (Edit/Delete request) to the Admin. Admin can accept, reject, or optimize.
+*   **Creating Process:** 
+    *   Instead of direct `updateDoc` or `deleteDoc`, non-admins trigger a write to an `action_requests` collection.
+    *   Admin dashboard listens to this collection and executes the final database transaction upon approval.
+
+---
+
+## Phase 3: Client, Service & Workflow Management
+**Goal:** Manage agency clients, the services they purchase, and the workflows required to deliver them.
+
+### 3.1 Client Management
+*   **Working Process:** Add client details, working duration (months), and profile. Once work is complete, mark the client as "Dead" (Archived). 
+*   **Creating Process:** Create a `clients` collection with status toggles (`active`, `dead`).
+
+### 3.2 Service Packages & Allocation
+*   **Working Process:** Define fixed agency packages or custom monthly services. Add services to clients with quantities. Establish priority sequence (e.g., Graphics 1, Graphics 2).
+*   **Creating Process:** 
+    *   Create a `system_services` master template collection.
+    *   When assigning to a client, copy these into a `client_services` sub-collection, allowing renaming and sequence sorting (drag-and-drop UI).
+
+### 3.3 Dynamic Workflows
+*   **Working Process:** Services trigger workflows (e.g., "Facebook Account Setup" requires 5 sub-tasks). As tasks are ticked off, a progress bar fills up on the client workflow board.
+*   **Creating Process:** Map services to standard checklist arrays. Calculate completion percentage: `(completed_tasks / total_tasks) * 100` and visually render as a circular progress badge.
+
+---
+
+## Phase 4: The Evo Board & Task Engine
+**Goal:** The heart of the operational system where all work is tracked and assigned.
+
+### 4.1 Evo Board (Master Task List)
+*   **Working Process:** A unified board showing all agency work. Highly customizable filters (by Client, User, Priority). Click a task to view description, checklist, and directions.
+*   **Creating Process:** 
+    *   Build a heavy-duty data table/kanban view. Use virtualization to ensure the browser doesn't lag with thousands of tasks.
+    *   Create sophisticated compound database queries for filtering.
+
+### 4.2 Advanced Task Assignment (Multi-select)
+*   **Working Process:** Admin can select 10 tasks at once (e.g., 10 days of graphics) and assign them to one employee instantly. Add specific checklists or reminders.
+*   **Creating Process:** 
+    *   Implement bulk state selection arrays in React.
+    *   Use batch database writes (`writeBatch` in Firestore) to update multiple task documents simultaneously to ensure speed.
+
+### 4.3 Instant Work & Countdowns
+*   **Working Process:** Assign "Instant Work". A countdown timer starts on the employee's screen immediately.
+*   **Creating Process:** Real-time web sockets/listeners. When a task marked `isInstant: true` is assigned, the receiver's UI mounts a high-priority timer component synced to server time.
+
+### 4.4 Task Status Segregation
+*   **Working Process:** Tasks move automatically between Pages: Total, Pending, Done, Missed, Late Submit. Users can add notes upon completion.
+*   **Creating Process:** 
+    *   Cron jobs or background hooks evaluate `dueDate` against `status`. 
+    *   If `status != done` and `dueDate < now`, update status to `missed`.
+
+---
+
+## Phase 5: Personal Dashboard & Productivity
+**Goal:** Give every employee their own personal OS to manage their day effectively.
+
+### 5.1 Main Dashboard & Analytics
+*   **Working Process:** Shows high-level stats (Total active clients, pending tasks, recent activities). Admin sees agency-wide stats; employees see their own.
+*   **Creating Process:** Aggregation functions. To avoid heavy reads, update statistical counters in the database dynamically when actions occur.
+
+### 5.2 My Day
+*   **Working Process:** Shows ONLY what the employee needs to do TODAY. History tab for past days. Unfinished past tasks show as badges requiring action.
+*   **Creating Process:** Query tasks where `assigneeId == user.uid` and `date == today()`.
+
+### 5.3 Evonote (Personal Notes)
+*   **Working Process:** Personal notepad with checklist and reminder capabilities.
+*   **Creating Process:** Private collection `evonotes` linked to user ID. Integration with the central notification system for reminders.
+
+---
+
+## Phase 6: Scheduling & Communication
+**Goal:** Seamless internal communication and deadline management.
+
+### 6.1 Deadline & Team Calendars
+*   **Working Process:** 
+    *   *Deadline Calendar:* Auto-populates all task deadlines. Click a date -> see tasks. Click task -> mark done.
+    *   *Team Calendar:* Google Calendar clone. Create events, mention users. 
+    *   *Active Meetings:* Live meeting system. If a meeting is open, it shows globally, and users can 1-click join.
+*   **Creating Process:** Integrate `FullCalendar` library. Map task dates to calendar events. Integrate WebRTC or a service like Jitsi for the meeting rooms.
+
+### 6.2 Mailbox & Messenger
+*   **Working Process:** 
+    *   *Mailbox:* Internal professional email system.
+    *   *Messenger:* WhatsApp clone (real-time chat, read receipts, online status).
+*   **Creating Process:** Real-time database listeners. Dedicated `messages` and `inbox` schemas.
+
+---
+
+## Phase 7: Tracking, Logs & Notifications
+**Goal:** Total visibility into agency operations without overwhelming the system.
+
+### 7.1 Advanced Notification System (Crash-Proof)
+*   **Working Process:** Mobile-style notifications. If 100 tasks are assigned at once, the system doesn't freeze. Badges appear on relevant icons (My Day, Evo Board). Reminders can be sent manually and track how many times they were sent.
+*   **Creating Process:** Implement a Notification Queue Context. Throttle/debounce incoming real-time alerts. Display as toast notifications and badge counts.
+
+### 7.2 Session Logs, Location Map & Activity Tracking
+*   **Working Process:** Tracks exactly when a user logs in, logs out (even if they close Chrome), active time, and plots their login location on a map. Full history of every action (Click, Edit, Delete).
+*   **Creating Process:** 
+    *   Use browser `beforeunload` events to catch tab closures.
+    *   Global interceptor for all database writes to simultaneously write a log entry to `activity_logs`.
+    *   Map integration (Google Maps/Leaflet) using stored coordinates.
+
+### 7.3 Employee Performance & Client Reports
+*   **Working Process:** Leaderboard of task completions to motivate employees. Generate professional reports for clients detailing work done.
+*   **Creating Process:** Scoring algorithms based on task completion time and quantity. PDF generation libraries (`jspdf` or `html2pdf`) for client reports.
+
+### 7.4 Dedicated Notice Board
+*   **Working Process:** Admin posts notices. Users like and comment.
+*   **Creating Process:** Standard CRUD feed implementation with nested comments.
+
+---
+
+## Phase 8: AI Integration (Nova AI)
+**Goal:** Introduce the ultimate assistant.
+
+### 8.1 Nova AI (Admin Assistant)
+*   **Working Process:** Nova acts as a human assistant. Admin types "How many tasks are pending for John?" or "Cancel all graphics tasks for Client X," and Nova executes.
+*   **Creating Process:** 
+    *   Integrate Gemini/OpenAI API.
+    *   Provide the AI with "Tools" (functions) that map directly to our system's internal APIs (e.g., `getPendingTasks(userId)`, `bulkUpdateTasks(params)`).
+
+---
+
+### Development Methodology (Strictly Adhered To)
+We will follow this protocol for every single feature as requested:
+1. **Create the UI/Page** (Professional, advanced aesthetics).
+2. **Build the Core Function Logic** (Database connection, state management).
+3. **Establish the Working Process** (Connecting it properly to the rest of the system).
+4. **Examine and Test** (Ensure no dummy data, everything is clickable and functional).
+5. **Move to the next feature.**
